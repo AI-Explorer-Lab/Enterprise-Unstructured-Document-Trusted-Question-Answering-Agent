@@ -79,7 +79,7 @@ def test_mineru_client_supports_json_path_fallback_and_cache(workspace_tmp_dir: 
     pdf_path = workspace_tmp_dir / "report.pdf"
     _create_pdf(pdf_path, ["第1节 经营情况", "一、核心指标", "（一）收入增长"])
 
-    client = MinerUClient(cache_ttl_seconds=120, cache_max_items=8)
+    client = MinerUClient(cache_ttl_seconds=120, cache_max_items=8, remote_enabled=False)
 
     json_payload = {
         "source": "mineru_json_file",
