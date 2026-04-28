@@ -1,4 +1,4 @@
-﻿from __future__ import annotations
+from __future__ import annotations
 
 import asyncio
 import unittest
@@ -11,6 +11,57 @@ from service.agent.controlled_agents import (
 )
 
 
+class StructuredIntentLLM:
+    def __init__(self) -> None:
+        self.structured_calls = 0
+        self.complete_calls = 0
+
+    async def structured_json(self, system_prompt, user_payload, schema, max_tokens=512):
+        del system_prompt, user_payload, schema, max_tokens
+        self.structured_calls += 1
+        return {
+            "query_type": "citation_locate",
+            "matched_keyword_group": "_CITATION_KEYWORDS",
+            "intent": "locate_source",
+            "reason": "structured",
+        }
+
+    async def complete(self, system_prompt, user_prompt, max_tokens=512):
+        del system_prompt, user_prompt, max_tokens
+        self.complete_calls += 1
+        return '{"query_type": "fact_lookup"}'
+
+
+class CompleteSlotLLM:
+    def __init__(self) -> None:
+        self.complete_calls = 0
+
+    async def complete(self, system_prompt, user_prompt, max_tokens=512):
+        del system_prompt, user_prompt, max_tokens
+        self.complete_calls += 1
+        return (
+            '{"years":["2024"],"metric":"revenue","period":"2024",'
+            '"target_statement":"","compare_targets":[],"scope":""}'
+        )
+
+
+class StructuredAuditLLM:
+    def __init__(self) -> None:
+        self.structured_calls = 0
+
+    async def structured_json(self, system_prompt, user_payload, schema, max_tokens=512):
+        del system_prompt, user_payload, schema, max_tokens
+        self.structured_calls += 1
+        return {
+            "semantic_decision": "answer",
+            "missing_aspects": [],
+            "evidence_coverage": "sufficient",
+            "conflict_detected": False,
+            "suggested_retry_query": "",
+            "reason": "structured_audit",
+        }
+
+
 class ControlledAgentsTestCase(unittest.TestCase):
     def test_intent_agent_maps_to_fixed_query_type_without_confidence(self):
         result = asyncio.run(IntentUnderstandingAgent().classify("Where is this sentence cited? Provide the page source."))
@@ -20,6 +71,15 @@ class ControlledAgentsTestCase(unittest.TestCase):
         self.assertEqual(result["intent"], "locate_source")
         self.assertNotIn("confidence", result)
 
+    def test_intent_agent_prefers_structured_json_path(self):
+        llm = StructuredIntentLLM()
+
+        result = asyncio.run(IntentUnderstandingAgent(llm).classify("Where is this sentence cited?"))
+
+        self.assertEqual(result["query_type"], "citation_locate")
+        self.assertEqual(llm.structured_calls, 1)
+        self.assertEqual(llm.complete_calls, 0)
+
     def test_slot_agent_returns_fixed_schema_and_full_year(self):
         result = asyncio.run(SlotFillingAgent().fill("What was 2025 revenue?", "table_qa"))
 
@@ -27,6 +87,15 @@ class ControlledAgentsTestCase(unittest.TestCase):
         self.assertEqual(result["years"], ["2025"])
         self.assertEqual(result["period"], "2025")
         self.assertEqual(result["metric"], "revenue")
+
+    def test_slot_agent_falls_back_to_complete_when_structured_json_missing(self):
+        llm = CompleteSlotLLM()
+
+        result = asyncio.run(SlotFillingAgent(llm).fill("Revenue by year?", "table_qa"))
+
+        self.assertIn("2024", result["years"])
+        self.assertEqual(result["period"], "2024")
+        self.assertGreaterEqual(llm.complete_calls, 1)
 
     def test_evidence_audit_can_request_retry_for_missing_table_aspect(self):
         audit = asyncio.run(
@@ -43,6 +112,24 @@ class ControlledAgentsTestCase(unittest.TestCase):
         self.assertEqual(audit["semantic_decision"], "retry")
         self.assertIn("table_evidence", audit["missing_aspects"])
         self.assertEqual(audit["evidence_coverage"], "partial")
+
+    def test_evidence_audit_uses_structured_json_when_available(self):
+        llm = StructuredAuditLLM()
+
+        audit = asyncio.run(
+            EvidenceAuditAgent(llm).audit(
+                question="What was 2025 revenue?",
+                query_type="table_qa",
+                slots={"years": ["2025"], "metric": "revenue", "period": "2025"},
+                selected_skill="TableQASkill",
+                evidence=[{"content": "2025 revenue was 10.", "chunk_type": "table", "final_score": 0.9}],
+                rerank_trace={},
+            )
+        )
+
+        self.assertEqual(audit["semantic_decision"], "answer")
+        self.assertEqual(audit["reason"], "structured_audit")
+        self.assertEqual(llm.structured_calls, 1)
 
     def test_gate_driven_decision_agent_consumes_retry_reason(self):
         result = asyncio.run(
@@ -83,3 +170,4 @@ class ControlledAgentsTestCase(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
