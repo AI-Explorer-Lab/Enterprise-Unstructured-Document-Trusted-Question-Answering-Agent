@@ -9,6 +9,7 @@ from service.agent.controlled_agents import (
     SlotFillingAgent,
     merge_audit_and_rule_gate,
 )
+from service.agent.skills import SummarizationSkill, TableQASkill
 
 
 class StructuredIntentLLM:
@@ -81,13 +82,18 @@ class ControlledAgentsTestCase(unittest.TestCase):
         self.assertEqual(llm.complete_calls, 0)
 
     def test_slot_agent_returns_fixed_schema_and_full_year(self):
-        result = asyncio.run(SlotFillingAgent().fill("What was 2025 revenue?", "table_qa"))
+        result = asyncio.run(SlotFillingAgent().fill("What was 2025 revenue?", "table_qa", TableQASkill))
 
-        self.assertEqual(set(result.keys()), {"years", "metric", "period", "target_statement", "compare_targets", "scope"})
+        self.assertEqual(set(result.keys()), {"years", "metric", "period", "target_statement", "compare_targets", "scope", "table_name", "unit", "focus", "__skill_name__", "__missing_required__"})
         self.assertEqual(result["years"], ["2025"])
         self.assertEqual(result["period"], "2025")
         self.assertEqual(result["metric"], "revenue")
 
+    def test_slot_agent_uses_skill_package_metadata_for_missing_slots(self):
+        result = asyncio.run(SlotFillingAgent().fill("????2025?????", "summarization", SummarizationSkill))
+
+        self.assertEqual(result["__skill_name__"], "SummarizationSkill")
+        self.assertEqual(result["__missing_required__"], [])
     def test_slot_agent_falls_back_to_complete_when_structured_json_missing(self):
         llm = CompleteSlotLLM()
 
