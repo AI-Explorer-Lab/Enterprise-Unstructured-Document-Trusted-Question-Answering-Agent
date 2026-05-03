@@ -25,21 +25,19 @@ def _mock_evidence(chunk_type: str = "text", score: float = 0.9, doc_source: str
 
 
 class EvidenceGateTestCase(unittest.TestCase):
-    def test_clarify_on_missing_slots(self):
+    def test_table_qa_with_table_evidence_answers(self):
         result = run_evidence_gate(
             query_type="table_qa",
             evidence=_mock_evidence("table"),
-            missing_slots=["metric", "period"],
             slots={},
             retry_count=0,
         )
-        self.assertEqual(result["decision"], "clarify")
+        self.assertEqual(result["decision"], "answer")
 
     def test_retry_then_refuse_on_low_scores(self):
         retry_result = run_evidence_gate(
             query_type="fact_lookup",
             evidence=_mock_evidence(score=0.1),
-            missing_slots=[],
             slots={},
             retry_count=0,
             min_top_score=0.45,
@@ -50,7 +48,6 @@ class EvidenceGateTestCase(unittest.TestCase):
         refuse_result = run_evidence_gate(
             query_type="fact_lookup",
             evidence=_mock_evidence(score=0.1),
-            missing_slots=[],
             slots={},
             retry_count=2,
             retry_limit=2,
@@ -63,7 +60,6 @@ class EvidenceGateTestCase(unittest.TestCase):
         result = run_evidence_gate(
             query_type="table_qa",
             evidence=_mock_evidence(chunk_type="text", score=0.9),
-            missing_slots=[],
             slots={"metric": "收入", "period": "2025"},
             retry_count=0,
             table_evidence_quota=1,
@@ -74,12 +70,11 @@ class EvidenceGateTestCase(unittest.TestCase):
         result = run_evidence_gate(
             query_type="multi_doc_compare",
             evidence=_mock_evidence(chunk_type="text", score=0.9, doc_source="only_one.pdf"),
-            missing_slots=[],
             slots={"compare_targets": ["A", "B"]},
             retry_count=2,
             retry_limit=2,
         )
-        self.assertIn(result["decision"], {"clarify", "refuse"})
+        self.assertEqual(result["decision"], "refuse")
 
     def test_unified_engine_generates_natural_retry_query(self):
         result = asyncio.run(

@@ -111,17 +111,17 @@ class TrustedQAWorkflowLangGraphTestCase(unittest.TestCase):
         self.assertIsNone(result)
         self.assertEqual(calls["count"], 0)
 
-    def test_graph_route_after_slot_fill_branches_to_clarify(self):
+    def test_graph_route_after_clarify_gate_branches_to_clarify(self):
         workflow = self._build_workflow(enabled=True, available=True)
 
-        route = workflow._graph_route_after_slot_fill({"clarify": {"decision": "clarify"}})
+        route = workflow._graph_route_after_clarify_gate({"clarify": {"decision": "clarify"}})
 
         self.assertEqual(route, "clarify")
 
-    def test_graph_route_after_slot_fill_branches_to_retrieve(self):
+    def test_graph_route_after_clarify_gate_branches_to_retrieve(self):
         workflow = self._build_workflow(enabled=True, available=True)
 
-        route = workflow._graph_route_after_slot_fill({"clarify": {"decision": "answer"}})
+        route = workflow._graph_route_after_clarify_gate({"clarify": {"decision": "answer"}})
 
         self.assertEqual(route, "retrieve")
 
@@ -145,6 +145,65 @@ class TrustedQAWorkflowLangGraphTestCase(unittest.TestCase):
         route = workflow._graph_route_after_retry({"gate": {"decision": "retry"}, "retry_count": 2})
 
         self.assertEqual(route, "final")
+
+    def test_retry_retrieval_uses_llm_expanded_queries(self):
+        workflow = self._build_workflow(enabled=True, available=True)
+
+        class FakeLLM:
+            def __init__(self):
+                self.calls = []
+
+            async def expand_queries(self, question, query_type, expand_query_num):
+                self.calls.append((question, query_type, expand_query_num))
+                return [question, f"{question} table values"]
+
+        class FakeRetriever:
+            def __init__(self):
+                self.calls = []
+
+            async def retrieve(self, **kwargs):
+                self.calls.append(kwargs)
+                return {
+                    "evidence": [{"content": "retry evidence", "chunk_type": "table", "final_score": 0.9}],
+                    "rerank_trace": {},
+                    "retrieval_trace": {"query_variants": kwargs.get("expanded_queries") or []},
+                }
+
+        class FakeEvidenceDecision:
+            retry_limit = 2
+
+            async def evaluate(self, **kwargs):
+                del kwargs
+                return {"decision": "refuse", "reason": "low_score"}
+
+        fake_llm = FakeLLM()
+        fake_retriever = FakeRetriever()
+        workflow.llm_service = fake_llm
+        workflow.retriever = fake_retriever
+        workflow.evidence_decision = FakeEvidenceDecision()
+        workflow.table_evidence_quota = 2
+
+        result = asyncio.run(
+            workflow._graph_retry_retrieval(
+                {
+                    "question": "What was 2025 revenue?",
+                    "collection_name": "finance",
+                    "top_k": 5,
+                    "expand_query_num": 3,
+                    "query_type": "table_qa",
+                    "retry_count": 0,
+                    "gate": {"decision": "retry", "suggested_retry_query": "2025 revenue table"},
+                    "slots": {"metric": "revenue", "period": "2025"},
+                    "observations": [],
+                    "selected_skill": types.SimpleNamespace(skill_name="TableQASkill"),
+                }
+            )
+        )
+
+        self.assertEqual(fake_llm.calls, [("2025 revenue table", "table_qa", 3)])
+        self.assertEqual(fake_retriever.calls[0]["expanded_queries"], ["2025 revenue table", "2025 revenue table table values"])
+        self.assertEqual(result["expanded"], ["2025 revenue table", "2025 revenue table table values"])
+        self.assertTrue(result["llm_expansion_used"])
 
     def test_ask_prefers_langgraph_response(self):
         workflow = self._build_workflow(enabled=True, available=True)
