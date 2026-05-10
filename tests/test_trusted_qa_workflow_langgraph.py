@@ -38,6 +38,45 @@ class TrustedQAWorkflowLangGraphTestCase(unittest.TestCase):
         self.assertEqual(state["retry_count"], 0)
         self.assertEqual(state["observations"], [])
 
+    def test_graph_nodes_preserve_question_across_state_updates(self):
+        workflow = self._build_workflow(enabled=True, available=True)
+
+        class FakeSessionService:
+            def load_session(self, session_id, collection_name="default"):
+                del session_id, collection_name
+                return {"session_id": "sid-1"}
+
+        class FakeIntentAgent:
+            async def classify(self, question):
+                return {"query_type": "fact_lookup", "reason": question}
+
+        class FakeSkill:
+            skill_name = "FactLookupSkill"
+
+            @staticmethod
+            def package_metadata():
+                return {"skill_name": "FactLookupSkill"}
+
+        class FakeSkillRegistry:
+            @staticmethod
+            def select_skill(query_type):
+                del query_type
+                return FakeSkill()
+
+        workflow.session_service = FakeSessionService()
+        workflow.intent_agent = FakeIntentAgent()
+        workflow.skill_registry = FakeSkillRegistry()
+
+        initial = workflow._langgraph_initial_state("2025年每10股派息多少元？", "shared", None, 5, 3, True)
+        after_load = asyncio.run(workflow._graph_load_session(initial))
+        after_understand = asyncio.run(workflow._graph_understand_question(after_load))
+
+        self.assertEqual(after_load["question"], "2025年每10股派息多少元？")
+        self.assertEqual(after_load["collection_name"], "shared")
+        self.assertEqual(after_understand["question"], "2025年每10股派息多少元？")
+        self.assertEqual(after_understand["intent_trace"]["reason"], "2025年每10股派息多少元？")
+        self.assertEqual(after_understand["sid"], "sid-1")
+
     def test_maybe_run_langgraph_skips_when_unavailable(self):
         workflow = self._build_workflow(enabled=True, available=False)
         calls = {"count": 0}

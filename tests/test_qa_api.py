@@ -3,6 +3,7 @@ import sys
 import tempfile
 import unittest
 from pathlib import Path
+from unittest.mock import AsyncMock, patch
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 if str(PROJECT_ROOT) not in sys.path:
@@ -98,6 +99,28 @@ class QAApiTestCase(unittest.TestCase):
             self.assertIn("messages", session_payload)
             self.assertIn("retrieval_traces", session_payload)
             self.assertGreaterEqual(len(session_payload["messages"]), 2)
+
+    def test_document_index_accepts_windows_style_path_in_raw_json(self):
+        service = AsyncMock()
+        service.index_documents = AsyncMock(return_value={"success": True, "indexed_doc_count": 1})
+        raw_payload = r'{"doc_source":"","pdf_path":"F:\tmp\trusted\test.pdf","force_rebuild":false,"collection_name":"shared"}'
+        raw_payload = raw_payload.replace('\\"', '"').replace('\\\\', '\\')
+
+        with patch("controller.apis.document_controller.get_document_indexing_service", return_value=service):
+            response = client.post(
+                "/documents/index",
+                content=raw_payload,
+                headers={"content-type": "application/json"},
+            )
+
+        self.assertEqual(response.status_code, 200, response.text)
+        self.assertEqual(response.json(), {"success": True, "indexed_doc_count": 1})
+        service.index_documents.assert_awaited_once_with(
+            pdf_path=r"F:\tmp\trusted\test.pdf",
+            force_rebuild=False,
+            collection_name="shared",
+            doc_source=None,
+        )
 
 
 if __name__ == "__main__":

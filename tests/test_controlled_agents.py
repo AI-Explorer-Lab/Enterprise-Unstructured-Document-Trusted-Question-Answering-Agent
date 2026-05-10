@@ -63,6 +63,19 @@ class StructuredAuditLLM:
         }
 
 
+class MissingQuestionAuditLLM:
+    async def structured_json(self, system_prompt, user_payload, schema, max_tokens=512):
+        del system_prompt, user_payload, schema, max_tokens
+        return {
+            "semantic_decision": "refuse",
+            "missing_aspects": ["question"],
+            "evidence_coverage": "poor",
+            "conflict_detected": False,
+            "suggested_retry_query": "",
+            "reason": "No question was provided, so semantic coverage cannot be determined.",
+        }
+
+
 class ControlledAgentsTestCase(unittest.TestCase):
     def test_intent_agent_maps_to_fixed_query_type_without_confidence(self):
         result = asyncio.run(IntentUnderstandingAgent().classify("Where is this sentence cited? Provide the page source."))
@@ -137,6 +150,23 @@ class ControlledAgentsTestCase(unittest.TestCase):
         self.assertEqual(audit["reason"], "structured_audit")
         self.assertEqual(llm.structured_calls, 1)
 
+    def test_evidence_audit_ignores_llm_missing_question_when_question_exists(self):
+        llm = MissingQuestionAuditLLM()
+
+        audit = asyncio.run(
+            EvidenceAuditAgent(llm).audit(
+                question="2025年每10股派息多少元？",
+                query_type="fact_lookup",
+                slots={},
+                selected_skill="FactLookupSkill",
+                evidence=[{"content": "2025年每10股派息2元。", "chunk_type": "text", "final_score": 0.9}],
+                rerank_trace={},
+            )
+        )
+
+        self.assertEqual(audit["semantic_decision"], "answer")
+        self.assertEqual(audit["missing_aspects"], [])
+
     def test_gate_driven_decision_agent_consumes_retry_reason(self):
         result = asyncio.run(
             EvidenceAuditAgent().decide_from_gate(
@@ -154,6 +184,24 @@ class ControlledAgentsTestCase(unittest.TestCase):
         self.assertEqual(result["rule_gate"]["reason"], "missing_table_evidence")
         self.assertIn("table", result["suggested_retry_query"].lower())
         self.assertNotIn("missing_table_evidence", result["suggested_retry_query"])
+
+    def test_gate_driven_decision_agent_prefers_audit_reason_for_refuse(self):
+        llm = MissingQuestionAuditLLM()
+
+        result = asyncio.run(
+            EvidenceAuditAgent(llm).decide_from_gate(
+                question="",
+                query_type="fact_lookup",
+                slots={},
+                selected_skill="FactLookupSkill",
+                evidence=[{"content": "2025年每10股派息2元。", "chunk_type": "text", "final_score": 0.9}],
+                rule_gate={"decision": "answer", "reason": "evidence_passed", "confidence": 0.8},
+                rerank_trace={},
+            )
+        )
+
+        self.assertEqual(result["decision"], "refuse")
+        self.assertIn("no question", result["reason"].lower())
 
     def test_merge_audit_and_rule_gate_is_conservative(self):
         merged = merge_audit_and_rule_gate(
