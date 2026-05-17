@@ -4,7 +4,7 @@ from service.retrieval.two_stage_hybrid_reranker import TwoStageHybridReranker
 
 
 def test_two_stage_reranker_weights_table_quota_and_trace() -> None:
-    reranker = TwoStageHybridReranker()
+    reranker = TwoStageHybridReranker(cross_encoder_enabled=False)
 
     candidates = [
         {
@@ -77,10 +77,11 @@ def test_two_stage_reranker_weights_table_quota_and_trace() -> None:
 
     assert ranked[0]["final_score"] >= ranked[-1]["final_score"]
     assert trace["top"]
+    assert trace["cross_encoder"]["status"] == "disabled"
 
 
 def test_two_stage_reranker_near_duplicate_filter_and_neighbor_supplement() -> None:
-    reranker = TwoStageHybridReranker(near_duplicate_threshold=0.90)
+    reranker = TwoStageHybridReranker(near_duplicate_threshold=0.90, cross_encoder_enabled=False)
 
     candidates = [
         {
@@ -151,3 +152,69 @@ def test_two_stage_reranker_near_duplicate_filter_and_neighbor_supplement() -> N
     assert "a-dup" not in ids
     assert trace["after_near_duplicate"] <= len(candidates) - 1
     assert trace["neighbor_supplemented"] >= 1
+
+
+def test_two_stage_reranker_applies_cross_encoder_final_order() -> None:
+    class FakeCrossEncoderScorer:
+        def score(self, query, texts):
+            del query
+            scores = [10.0 if "关键答案" in text else 1.0 for text in texts]
+            return scores, {"status": "applied", "model": "fake-cross-encoder"}
+
+    reranker = TwoStageHybridReranker(
+        cross_encoder_enabled=True,
+        cross_encoder_candidate_pool=3,
+        cross_encoder_scorer=FakeCrossEncoderScorer(),
+    )
+    candidates = [
+        {
+            "chunk_id": "dense-top",
+            "chunk_type": "text",
+            "raw_doc": "普通背景材料",
+            "dense_score": 0.99,
+            "bm25_score": 0.90,
+        },
+        {
+            "chunk_id": "ce-top",
+            "chunk_type": "text",
+            "raw_doc": "这里包含关键答案",
+            "dense_score": 0.20,
+            "bm25_score": 0.10,
+            "heading_path": "第一章 关键结论",
+        },
+    ]
+
+    ranked, trace = reranker.rerank(
+        query="关键答案是什么",
+        candidates=candidates,
+        top_k=1,
+        query_type="fact_lookup",
+    )
+
+    assert ranked[0]["chunk_id"] == "ce-top"
+    assert ranked[0]["cross_encoder_score"] == 10.0
+    assert ranked[0]["light_final_score"] >= 0.0
+    assert trace["cross_encoder"]["status"] == "applied"
+
+
+def test_two_stage_reranker_falls_back_when_cross_encoder_unavailable() -> None:
+    reranker = TwoStageHybridReranker(
+        cross_encoder_enabled=True,
+        cross_encoder_model="missing-model",
+        cross_encoder_candidate_pool=2,
+    )
+    reranker._cross_encoder_load_failed = "transformers unavailable"
+
+    ranked, trace = reranker.rerank(
+        query="产品参数",
+        candidates=[
+            {"chunk_id": "a", "raw_doc": "产品参数", "dense_score": 0.9, "bm25_score": 0.1},
+            {"chunk_id": "b", "raw_doc": "其他内容", "dense_score": 0.1, "bm25_score": 0.9},
+        ],
+        top_k=1,
+        query_type="fact_lookup",
+    )
+
+    assert len(ranked) == 1
+    assert "cross_encoder_score" not in ranked[0]
+    assert trace["cross_encoder"]["status"] == "fallback"

@@ -163,7 +163,8 @@ def test_parallel_executor_dense_bm25_table_and_cache_hit() -> None:
 
     trace1 = result1["retrieval_trace"]
     assert trace1["cache_hit"] is False
-    assert trace1["task_count"] == 9
+    assert trace1["task_count"] == 12
+    assert len(trace1["query_variants"]) == 4
     assert repo.max_active <= 2
 
     route_set = {entry["route"] for entry in trace1["task_trace"]}

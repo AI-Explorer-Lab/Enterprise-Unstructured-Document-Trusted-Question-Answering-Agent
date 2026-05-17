@@ -239,9 +239,11 @@ class TrustedQAWorkflowLangGraphTestCase(unittest.TestCase):
             )
         )
 
-        self.assertEqual(fake_llm.calls, [("2025 revenue table", "table_qa", 3)])
-        self.assertEqual(fake_retriever.calls[0]["expanded_queries"], ["2025 revenue table", "2025 revenue table table values"])
-        self.assertEqual(result["expanded"], ["2025 revenue table", "2025 revenue table table values"])
+        self.assertEqual(fake_llm.calls, [("2025 revenue table", "table_qa", 4)])
+        self.assertEqual(len(fake_retriever.calls[0]["expanded_queries"]), 4)
+        self.assertEqual(fake_retriever.calls[0]["expanded_queries"][:2], ["2025 revenue table", "2025 revenue table table values"])
+        self.assertIn("指标 数值 单位 表头", fake_retriever.calls[0]["expanded_queries"][-1])
+        self.assertEqual(result["expanded"], fake_retriever.calls[0]["expanded_queries"])
         self.assertTrue(result["llm_expansion_used"])
 
     def test_ask_prefers_langgraph_response(self):
