@@ -494,7 +494,9 @@ class TrustedQAWorkflow:
 
         planned_query_type = str(plan.get("query_type") or query_type or "fact_lookup")
         planned_slots = dict(slots or {})
-        planned_slots.update(dict(plan.get("slots") or {}))
+        for key, value in dict(plan.get("slots") or {}).items():
+            if not planned_slots.get(key):
+                planned_slots[key] = value
         planned_intent = dict(intent_trace or {})
         planned_intent["query_type"] = planned_query_type
         planned_intent["planning_mode"] = "decomposed"
