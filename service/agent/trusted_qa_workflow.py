@@ -1,12 +1,14 @@
 ﻿from __future__ import annotations
 
+import asyncio
 import hashlib
 import json
 import os
+import re
 import time
 import copy
 from contextvars import ContextVar
-from typing import Any, Awaitable, Callable, Dict, List, Optional
+from typing import Any, Awaitable, Callable, Dict, List, Mapping, Optional, Sequence
 from uuid import uuid4
 
 from service.agent.answer_generator import AnswerGenerator
@@ -14,7 +16,10 @@ from service.agent.clarify_gate import build_clarify_question
 from service.agent.conversation_context import ConversationContextService
 from service.agent.controlled_agents import IntentUnderstandingAgent, QuestionUnderstandingAgent, SlotFillingAgent
 from service.agent.evidence_gate import EvidenceDecisionEngine
+from service.agent.company_registry import get_company_registry
 from service.agent.query_expander import FIXED_QUERY_VARIANT_TOTAL, expand_queries
+from service.agent.query_planner import build_query_plan, is_decomposed_plan
+from service.agent.retrieval_scope import RetrievalScope, resolve_retrieval_scope
 from service.agent.skill_registry import DEFAULT_SKILL_REGISTRY
 from service.embedding.embedding_service import EmbeddingService, build_embedding_provider_from_config
 from service.evaluation.ragas_evaluator import evaluate_qa_result
@@ -74,6 +79,77 @@ def _fixed_query_variants(question: str, query_type: str, candidates: List[str] 
     return merged
 
 
+def _chunk_key(row: Dict[str, Any]) -> str:
+    chunk_id = str(row.get("chunk_id") or "").strip()
+    if chunk_id:
+        return chunk_id
+    return f"anon:{abs(hash(str(row.get('raw_doc') or row.get('content') or '')))}"
+
+
+def _retrieval_score(row: Dict[str, Any]) -> float:
+    for key in ("confidence_score", "final_score", "score", "rank_score", "retrieval_score"):
+        try:
+            return float(row.get(key))
+        except Exception:
+            continue
+    return 0.0
+
+
+def _row_search_text(row: Dict[str, Any]) -> str:
+    return " ".join(
+        [
+            str(row.get("heading_path") or ""),
+            str(row.get("table_context_text") or ""),
+            str(row.get("table_header_text") or ""),
+            str(row.get("raw_doc") or row.get("content") or ""),
+        ]
+    )
+
+
+def _years_from_value(value: Any) -> List[int]:
+    values = value if isinstance(value, (list, tuple, set)) else [value]
+    years: List[int] = []
+    for item in values:
+        for match in re.findall(r"(?:19|20)\d{2}", str(item or "")):
+            year = int(match)
+            if year not in years:
+                years.append(year)
+    return years
+
+
+def _metadata_filter_years(metadata_filter: Mapping[str, Any] | None) -> List[int]:
+    if not isinstance(metadata_filter, Mapping):
+        return []
+    return _years_from_value(metadata_filter.get("year"))
+
+
+def _metadata_filter_for_years(metadata_filter: Mapping[str, Any] | None, years: Sequence[int]) -> Dict[str, Any]:
+    payload = dict(metadata_filter or {})
+    payload["year"] = list(years)
+    return payload
+
+
+def _should_use_year_scoped_retrieval(question: str, query_type: str, metadata_filter: Mapping[str, Any] | None) -> bool:
+    years = _metadata_filter_years(metadata_filter)
+    if len(years) <= 1:
+        return False
+    if query_type in {"table_qa", "multi_doc_compare"}:
+        return True
+    text = str(question or "")
+    return query_type in {"fact_lookup", "summarization", "report_generation"} and any(
+        term in text for term in ("近三年", "近两年", "历年", "这几年", "趋势", "变化", "对比", "比较", "逐年", "分别")
+    )
+
+
+def _year_scoped_question(question: str, year: int) -> str:
+    base = str(question or "").strip()
+    return f"{base}（只查询 {year} 年度，不要使用其他年份替代。）"
+
+
+def _subtask_id(subtask: Mapping[str, Any]) -> str:
+    return str(subtask.get("slot") or subtask.get("subtask_id") or "").strip()
+
+
 def _usable_llm_answer(answer: Any) -> bool:
     text = str(answer or "").strip()
     if len(text) < 12:
@@ -103,6 +179,7 @@ def _progress_stage_from_observation(item: Dict[str, Any]) -> Dict[str, Any] | N
         "llm_answer_cache_hit": bool(item.get("llm_answer_cache_hit", False)),
         "llm_query_expansion_used": bool(item.get("llm_query_expansion_used", False)),
         "evidence_count": int(item.get("evidence_count") or 0),
+        "session_id": str(item.get("session_id") or ""),
     }
 
 
@@ -153,10 +230,37 @@ class TrustedQAWorkflow:
         reranker_cfg = self.config.get("reranker", {}) if isinstance(self.config.get("reranker"), dict) else {}
         cache_cfg = self.config.get("cache", {}) if isinstance(self.config.get("cache"), dict) else {}
         guard_cfg = self.config.get("guardrails", {}) if isinstance(self.config.get("guardrails"), dict) else {}
+        planner_cfg = self.config.get("planner", {}) if isinstance(self.config.get("planner"), dict) else {}
+        retrieval_max_concurrency = max(1, int(retrieval_cfg.get("max_concurrency", 6)))
+        self.query_plan_max_subtasks = max(
+            1,
+            int(planner_cfg.get("max_subtasks", retrieval_cfg.get("max_query_plan_subtasks", 10))),
+        )
+        self.query_plan_max_parallel_retrieval_tasks = max(
+            1,
+            int(
+                planner_cfg.get(
+                    "max_parallel_retrieval_tasks",
+                    retrieval_cfg.get("max_query_plan_parallel_retrieval_tasks", 30),
+                )
+            ),
+        )
+        default_concurrent_subtasks = max(
+            1,
+            min(
+                self.query_plan_max_subtasks,
+                self.query_plan_max_parallel_retrieval_tasks // retrieval_max_concurrency,
+            ),
+        )
+        self.query_plan_max_concurrent_subtasks = max(
+            1,
+            int(planner_cfg.get("max_concurrent_subtasks", default_concurrent_subtasks)),
+        )
         self.session_service = get_session_service()
         self.skill_registry = DEFAULT_SKILL_REGISTRY
         self.llm_service = get_llm_service()
         self.conversation_context = ConversationContextService(self.llm_service)
+        self.company_registry = get_company_registry()
         self.intent_agent = IntentUnderstandingAgent(self.llm_service)
         self.slot_agent = SlotFillingAgent(self.llm_service)
         self.understanding_agent = QuestionUnderstandingAgent(self.llm_service)
@@ -170,7 +274,7 @@ class TrustedQAWorkflow:
                 ),
                 query_expander=_query_expander_for_executor,
                 async_embedding_builder=lambda text_value: self.embedding_service.embed_text(text_value, use_cache=True, chunk_text=False),
-                max_concurrency=int(retrieval_cfg.get("max_concurrency", 6)),
+                max_concurrency=retrieval_max_concurrency,
                 query_timeout_seconds=float(retrieval_cfg.get("query_timeout_seconds", 20)),
             ),
             reranker=TwoStageHybridReranker(
@@ -259,6 +363,7 @@ class TrustedQAWorkflow:
         query_type: str,
         evidence: List[Dict[str, Any]],
         citations: List[Dict[str, Any]],
+        scope: Mapping[str, Any] | None = None,
     ) -> str:
         evidence_fingerprint = []
         for item in evidence:
@@ -282,11 +387,12 @@ class TrustedQAWorkflow:
             for item in citations
         ]
         payload = {
-            "version": "grounded-answer-v1",
+            "version": "grounded-answer-v2-scope",
             "question": str(question or "").strip(),
             "query_type": str(query_type or "fact_lookup"),
             "provider": str(getattr(self.llm_service, "provider_name", "")),
             "model": str(getattr(self.llm_service, "model", "")),
+            "scope": dict(scope or {}),
             "evidence": evidence_fingerprint,
             "citations": citation_fingerprint,
         }
@@ -321,6 +427,7 @@ class TrustedQAWorkflow:
         query_type: str,
         top_k: int,
         expand_query_num: int,
+        metadata_filter: Mapping[str, Any] | None = None,
     ) -> str:
         repository = getattr(getattr(self.retriever, "parallel_executor", None), "repository", None)
         repository_revision = int(getattr(repository, "revision", 0) or 0)
@@ -339,6 +446,7 @@ class TrustedQAWorkflow:
             "model": str(getattr(self.llm_service, "model", "")),
             "repository_revision": repository_revision,
             "repository_collection_count": repository_collection_count,
+            "metadata_filter": dict(metadata_filter or {}),
         }
         raw = json.dumps(payload, ensure_ascii=False, sort_keys=True, default=str)
         return hashlib.sha256(raw.encode("utf-8")).hexdigest()
@@ -374,6 +482,663 @@ class TrustedQAWorkflow:
         expanded = _fixed_query_variants(question, query_type, llm_expanded)
         return expanded, llm_expanded, bool(llm_expanded)
 
+    def _apply_query_plan(
+        self,
+        question: str,
+        query_type: str,
+        slots: Dict[str, Any],
+        intent_trace: Dict[str, Any],
+    ) -> tuple[Dict[str, Any], str, Dict[str, Any], Dict[str, Any]]:
+        plan = build_query_plan(question, query_type)
+        if not is_decomposed_plan(plan):
+            return plan, query_type, slots, intent_trace
+
+        planned_query_type = str(plan.get("query_type") or query_type or "fact_lookup")
+        planned_slots = dict(slots or {})
+        for key, value in dict(plan.get("slots") or {}).items():
+            if not planned_slots.get(key):
+                planned_slots[key] = value
+        planned_intent = dict(intent_trace or {})
+        planned_intent["query_type"] = planned_query_type
+        planned_intent["planning_mode"] = "decomposed"
+        planned_intent["query_plan"] = plan
+        return plan, planned_query_type, planned_slots, planned_intent
+
+    async def _resolve_retrieval_scope(
+        self,
+        question: str,
+        collection_name: str,
+        query_type: str,
+        slots: Dict[str, Any],
+        conversation_state: Mapping[str, Any] | None,
+    ) -> RetrievalScope:
+        repository = getattr(getattr(self.retriever, "parallel_executor", None), "repository", None)
+        document_scopes: List[Dict[str, Any]] = []
+        list_scopes = getattr(repository, "list_document_scopes", None)
+        if callable(list_scopes):
+            try:
+                document_scopes = list(await list_scopes(collection_name))
+            except Exception:
+                document_scopes = []
+        focus = (conversation_state or {}).get("conversation_focus") if isinstance(conversation_state, Mapping) else None
+        scope = resolve_retrieval_scope(
+            question=question,
+            query_type=query_type,
+            slots=slots,
+            conversation_focus=focus if isinstance(focus, Mapping) else None,
+            document_scopes=document_scopes,
+            company_registry=self.company_registry,
+        )
+        if scope.company_id:
+            slots["company_id"] = scope.company_id
+        if scope.company_name:
+            slots["company"] = scope.company_name
+        if scope.years:
+            slots["years"] = [str(year) for year in scope.years]
+            slots["period"] = str(scope.years[0]) if len(scope.years) == 1 else "、".join(str(year) for year in scope.years)
+        slots["retrieval_scope"] = scope.as_dict()
+        slots["metadata_filter"] = scope.metadata_filter()
+        return scope
+
+    @staticmethod
+    def _apply_scope_clarify(clarify: Dict[str, Any], scope: RetrievalScope, slots: Dict[str, Any]) -> Dict[str, Any]:
+        if not scope.should_clarify:
+            return clarify
+        payload = dict(clarify or {})
+        missing = list(payload.get("missing_slots") or [])
+        for item in scope.missing_slots:
+            if item not in missing:
+                missing.append(item)
+        payload["decision"] = "clarify"
+        payload["missing_slots"] = missing
+        payload["clarify_question"] = scope.clarify_question or payload.get("clarify_question") or "请补充公司和财报年份后再查询。"
+        payload["slots"] = slots
+        payload["retrieval_scope"] = scope.as_dict()
+        return payload
+
+    @staticmethod
+    def _scope_refuse_gate(scope: RetrievalScope) -> Dict[str, Any]:
+        return {
+            "decision": "refuse",
+            "reason": scope.refuse_reason or "scope_refuse",
+            "message": scope.refuse_message or "当前文档集中没有该范围对应的年报证据，不能使用其他范围的数据替代回答。",
+            "retrieval_scope": scope.as_dict(),
+            "unavailable_years": list(scope.unavailable_years),
+            "confidence": 0.0,
+        }
+
+    @staticmethod
+    def _annotate_subtask_evidence(
+        evidence: List[Dict[str, Any]],
+        subtask: Dict[str, Any],
+    ) -> List[Dict[str, Any]]:
+        annotated: List[Dict[str, Any]] = []
+        for item in evidence:
+            if not isinstance(item, dict):
+                continue
+            row = dict(item)
+            row["retrieval_subtask_id"] = _subtask_id(subtask)
+            row["retrieval_subtask_name"] = str(subtask.get("display_name") or "")
+            annotated.append(row)
+        return annotated
+
+    @staticmethod
+    def _merge_decomposed_evidence(subtask_results: List[Dict[str, Any]], final_top_k: int) -> List[Dict[str, Any]]:
+        limit = max(1, int(final_top_k))
+        selected: List[Dict[str, Any]] = []
+        seen: set[str] = set()
+
+        def add(row: Dict[str, Any]) -> None:
+            key = _chunk_key(row)
+            if key in seen or len(selected) >= limit:
+                return
+            selected.append(row)
+            seen.add(key)
+
+        for result in subtask_results:
+            evidence = [dict(item) for item in result.get("evidence") or [] if isinstance(item, dict)]
+            if not evidence:
+                continue
+            display_name = str((result.get("subtask") or {}).get("display_name") or "").strip()
+            match_terms = [
+                str(item or "").strip()
+                for item in list((result.get("subtask") or {}).get("match_terms") or [])
+                if str(item or "").strip()
+            ]
+            if display_name and display_name not in match_terms:
+                match_terms.append(display_name)
+            representative = None
+            for term in match_terms:
+                representative = next(
+                    (item for item in evidence if str(item.get("chunk_type") or "") == "table" and term in _row_search_text(item)),
+                    None,
+                )
+                if representative is not None:
+                    break
+            if representative is None:
+                for term in match_terms:
+                    representative = next((item for item in evidence if term in _row_search_text(item)), None)
+                    if representative is not None:
+                        break
+            table_first = next((item for item in evidence if str(item.get("chunk_type") or "") == "table"), None)
+            add(representative or table_first or evidence[0])
+
+        candidates: List[Dict[str, Any]] = []
+        for result in subtask_results:
+            candidates.extend([dict(item) for item in result.get("evidence") or [] if isinstance(item, dict)])
+        candidates.sort(key=_retrieval_score, reverse=True)
+        for item in candidates:
+            add(item)
+            if len(selected) >= limit:
+                break
+        return selected
+
+    async def _retrieve_decomposed_plan(
+        self,
+        plan: Dict[str, Any],
+        collection_name: str,
+        top_k: int,
+        expand_query_num: int,
+        enable_cache: bool,
+        metadata_filter: Mapping[str, Any] | None = None,
+    ) -> tuple[Dict[str, Any], List[str], List[str] | None, bool, Dict[str, Any]]:
+        started = time.perf_counter()
+        subtasks = [
+            dict(item)
+            for item in list(plan.get("subtasks") or [])[: self.query_plan_max_subtasks]
+            if isinstance(item, dict)
+        ]
+        final_top_k = max(1, int(top_k))
+        subtask_top_k = max(1, int(top_k))
+        max_concurrent_subtasks = max(1, min(len(subtasks) or 1, self.query_plan_max_concurrent_subtasks))
+        semaphore = asyncio.Semaphore(max_concurrent_subtasks)
+
+        async def run_subtask(index: int, subtask: Dict[str, Any]) -> Dict[str, Any]:
+            async with semaphore:
+                subtask_question = str(subtask.get("question") or subtask.get("display_name") or "").strip()
+                subtask_query_type = str(subtask.get("query_type") or plan.get("query_type") or "fact_lookup")
+                expanded, llm_expanded, llm_used = await self._expand_queries_for_retrieval(
+                    subtask_question,
+                    subtask_query_type,
+                    expand_query_num,
+                )
+                retrieval_result = await self.retriever.retrieve(
+                    question=subtask_question,
+                    collection_name=collection_name,
+                    top_k=subtask_top_k,
+                    query_type=subtask_query_type,
+                    expand_query_num=expand_query_num,
+                    enable_cache=enable_cache,
+                    expanded_queries=expanded,
+                    metadata_filter=metadata_filter,
+                )
+                evidence = self._annotate_subtask_evidence(list(retrieval_result.get("evidence") or []), subtask)
+                return {
+                    "index": index,
+                    "subtask": subtask,
+                    "question": subtask_question,
+                    "query_type": subtask_query_type,
+                    "expanded_queries": expanded,
+                    "llm_expanded": llm_expanded,
+                    "llm_expansion_used": llm_used,
+                    "evidence": evidence,
+                    "retrieval_trace": dict(retrieval_result.get("retrieval_trace") or {}),
+                    "rerank_trace": dict(retrieval_result.get("rerank_trace") or {}),
+                }
+
+        subtask_results = await asyncio.gather(*(run_subtask(index, subtask) for index, subtask in enumerate(subtasks)))
+        subtask_results = sorted(subtask_results, key=lambda item: int(item.get("index") or 0))
+        evidence = self._merge_decomposed_evidence(subtask_results, final_top_k)
+        expanded = []
+        llm_expanded_flat: List[str] = []
+        for result in subtask_results:
+            for item in list(result.get("expanded_queries") or []):
+                value = str(item or "").strip()
+                if value and value not in expanded:
+                    expanded.append(value)
+            for item in list(result.get("llm_expanded") or []):
+                value = str(item or "").strip()
+                if value and value not in llm_expanded_flat:
+                    llm_expanded_flat.append(value)
+
+        retrieval_trace = {
+            "collection_name": collection_name,
+            "query_type": str(plan.get("query_type") or "fact_lookup"),
+            "planning_mode": "decomposed",
+            "query_plan": plan,
+            "metadata_filter": dict(metadata_filter or {}),
+            "subtask_count": len(subtask_results),
+            "configured_max_subtasks": self.query_plan_max_subtasks,
+            "max_concurrent_subtasks": max_concurrent_subtasks,
+            "max_parallel_retrieval_tasks": self.query_plan_max_parallel_retrieval_tasks,
+            "subtask_top_k": subtask_top_k,
+            "final_top_k": final_top_k,
+            "query_variants": expanded,
+            "expanded_queries": expanded,
+            "subtask_traces": [
+                {
+                    "subtask_id": _subtask_id(result.get("subtask") or {}),
+                    "display_name": (result.get("subtask") or {}).get("display_name"),
+                    "question": result.get("question"),
+                    "expanded_queries": result.get("expanded_queries") or [],
+                    "retrieval_trace": result.get("retrieval_trace") or {},
+                    "rerank_trace": result.get("rerank_trace") or {},
+                    "evidence_ids": [item.get("chunk_id") for item in result.get("evidence") or []],
+                    "evidence_count": len(result.get("evidence") or []),
+                }
+                for result in subtask_results
+            ],
+            "intermediate_evidence_count": sum(len(result.get("evidence") or []) for result in subtask_results),
+            "final_evidence_count": len(evidence),
+            "cache_hit": False,
+            "generated_at": time.time(),
+        }
+        rerank_trace = {
+            "planning_mode": "decomposed",
+            "subtask_count": len(subtask_results),
+            "subtask_rerank_traces": [result.get("rerank_trace") or {} for result in subtask_results],
+            "top": [
+                {
+                    "chunk_id": row.get("chunk_id"),
+                    "retrieval_subtask_id": row.get("retrieval_subtask_id"),
+                    "final_score": row.get("final_score"),
+                    "confidence_score": row.get("confidence_score"),
+                    "score": row.get("score"),
+                }
+                for row in evidence
+            ],
+        }
+        retrieval_result = {
+            "query_type": str(plan.get("query_type") or "fact_lookup"),
+            "evidence": evidence,
+            "candidates": evidence,
+            "retrieval_trace": retrieval_trace,
+            "rerank_trace": rerank_trace,
+        }
+        stage = {
+            "phase": "parallel_hybrid_retrieval",
+            "duration_ms": int((time.perf_counter() - started) * 1000),
+            "cache_precheck_hit": False,
+            "query_expansion_cache_hit": False,
+            "query_expansion_skipped": "",
+            "cache_hit": False,
+            "llm_query_expansion_used": any(bool(result.get("llm_expansion_used")) for result in subtask_results),
+            "query_variant_count": len(expanded),
+            "planning_mode": "decomposed",
+            "subtask_count": len(subtask_results),
+            "max_concurrent_subtasks": max_concurrent_subtasks,
+            "max_parallel_retrieval_tasks": self.query_plan_max_parallel_retrieval_tasks,
+            "intermediate_evidence_count": retrieval_trace["intermediate_evidence_count"],
+        }
+        return retrieval_result, expanded, llm_expanded_flat or None, bool(llm_expanded_flat), stage
+
+    @staticmethod
+    def _merge_year_scoped_evidence(year_results: List[Dict[str, Any]], final_top_k: int) -> List[Dict[str, Any]]:
+        limit = max(1, int(final_top_k), len(year_results) * 2)
+        selected: List[Dict[str, Any]] = []
+        seen: set[str] = set()
+
+        def add(row: Dict[str, Any]) -> None:
+            key = _chunk_key(row)
+            if key in seen or len(selected) >= limit:
+                return
+            selected.append(row)
+            seen.add(key)
+
+        for result in year_results:
+            evidence = [dict(item) for item in result.get("evidence") or [] if isinstance(item, dict)]
+            table_first = next((item for item in evidence if str(item.get("chunk_type") or "") == "table"), None)
+            if table_first is not None:
+                add(table_first)
+            elif evidence:
+                add(evidence[0])
+            for item in evidence:
+                if len([row for row in selected if row.get("retrieval_scope_year") == result.get("year")]) >= 2:
+                    break
+                add(item)
+
+        candidates: List[Dict[str, Any]] = []
+        for result in year_results:
+            candidates.extend([dict(item) for item in result.get("evidence") or [] if isinstance(item, dict)])
+        candidates.sort(key=_retrieval_score, reverse=True)
+        for item in candidates:
+            add(item)
+            if len(selected) >= limit:
+                break
+        return selected
+
+    @staticmethod
+    def _merge_year_scoped_decomposed_evidence(
+        year_results: List[Dict[str, Any]],
+        final_top_k: int,
+        subtask_count: int,
+    ) -> List[Dict[str, Any]]:
+        limit = max(1, int(final_top_k), len(year_results) * max(1, int(subtask_count)))
+        selected: List[Dict[str, Any]] = []
+        seen: set[str] = set()
+
+        def add(row: Dict[str, Any]) -> None:
+            if not row:
+                return
+            key = _chunk_key(row)
+            if key in seen or len(selected) >= limit:
+                return
+            selected.append(row)
+            seen.add(key)
+
+        for result in year_results:
+            evidence = [dict(item) for item in result.get("evidence") or [] if isinstance(item, dict)]
+            subtask_ids: List[str] = []
+            for item in evidence:
+                subtask_id = str(item.get("retrieval_subtask_id") or "").strip()
+                if subtask_id and subtask_id not in subtask_ids:
+                    subtask_ids.append(subtask_id)
+            for subtask_id in subtask_ids:
+                candidates = [item for item in evidence if str(item.get("retrieval_subtask_id") or "") == subtask_id]
+                table_first = next((item for item in candidates if str(item.get("chunk_type") or "") == "table"), None)
+                add(table_first or (candidates[0] if candidates else {}))
+
+        candidates: List[Dict[str, Any]] = []
+        for result in year_results:
+            candidates.extend([dict(item) for item in result.get("evidence") or [] if isinstance(item, dict)])
+        candidates.sort(key=_retrieval_score, reverse=True)
+        for item in candidates:
+            add(item)
+            if len(selected) >= limit:
+                break
+        return selected
+
+    async def _retrieve_year_scoped_decomposed_plan(
+        self,
+        plan: Dict[str, Any],
+        question: str,
+        collection_name: str,
+        top_k: int,
+        expand_query_num: int,
+        enable_cache: bool,
+        metadata_filter: Mapping[str, Any],
+    ) -> tuple[Dict[str, Any], List[str], List[str] | None, bool, Dict[str, Any]]:
+        started = time.perf_counter()
+        years = _metadata_filter_years(metadata_filter)
+        subtasks = [
+            dict(item)
+            for item in list(plan.get("subtasks") or [])[: self.query_plan_max_subtasks]
+            if isinstance(item, dict)
+        ]
+        subtask_count = len(subtasks)
+        final_top_k = max(1, int(top_k), len(years) * max(1, subtask_count))
+        year_top_k = max(1, int(top_k), max(1, subtask_count))
+        max_concurrent_years = max(1, min(len(years) or 1, self.query_plan_max_concurrent_subtasks))
+        semaphore = asyncio.Semaphore(max_concurrent_years)
+
+        async def run_year(index: int, year: int) -> Dict[str, Any]:
+            async with semaphore:
+                year_filter = _metadata_filter_for_years(metadata_filter, [year])
+                year_plan = copy.deepcopy(plan)
+                year_plan["question"] = _year_scoped_question(question, year)
+                year_subtasks: List[Dict[str, Any]] = []
+                for subtask in subtasks:
+                    scoped_subtask = dict(subtask)
+                    subtask_question = str(scoped_subtask.get("question") or scoped_subtask.get("display_name") or "").strip()
+                    scoped_subtask["question"] = _year_scoped_question(subtask_question, year)
+                    year_subtasks.append(scoped_subtask)
+                year_plan["subtasks"] = year_subtasks
+                retrieval_result, expanded, llm_expanded, llm_used, stage = await self._retrieve_decomposed_plan(
+                    plan=year_plan,
+                    collection_name=collection_name,
+                    top_k=year_top_k,
+                    expand_query_num=expand_query_num,
+                    enable_cache=enable_cache,
+                    metadata_filter=year_filter,
+                )
+                evidence: List[Dict[str, Any]] = []
+                for item in list(retrieval_result.get("evidence") or []):
+                    if not isinstance(item, dict):
+                        continue
+                    row = dict(item)
+                    row["retrieval_scope_year"] = year
+                    evidence.append(row)
+                return {
+                    "index": index,
+                    "year": year,
+                    "question": year_plan["question"],
+                    "metadata_filter": year_filter,
+                    "expanded_queries": expanded,
+                    "llm_expanded": llm_expanded,
+                    "llm_expansion_used": llm_used,
+                    "evidence": evidence,
+                    "retrieval_trace": dict(retrieval_result.get("retrieval_trace") or {}),
+                    "rerank_trace": dict(retrieval_result.get("rerank_trace") or {}),
+                    "stage": stage,
+                }
+
+        year_results = await asyncio.gather(*(run_year(index, year) for index, year in enumerate(years)))
+        year_results = sorted(year_results, key=lambda item: int(item.get("index") or 0))
+        evidence = self._merge_year_scoped_decomposed_evidence(year_results, final_top_k, subtask_count)
+        expanded: List[str] = []
+        llm_expanded_flat: List[str] = []
+        for result in year_results:
+            for item in list(result.get("expanded_queries") or []):
+                value = str(item or "").strip()
+                if value and value not in expanded:
+                    expanded.append(value)
+            for item in list(result.get("llm_expanded") or []):
+                value = str(item or "").strip()
+                if value and value not in llm_expanded_flat:
+                    llm_expanded_flat.append(value)
+
+        retrieval_trace = {
+            "collection_name": collection_name,
+            "query_type": str(plan.get("query_type") or "fact_lookup"),
+            "planning_mode": "year_scoped_decomposed",
+            "query_plan": plan,
+            "metadata_filter": dict(metadata_filter or {}),
+            "years": years,
+            "subtask_count": len(year_results) * max(1, subtask_count),
+            "year_count": len(year_results),
+            "max_concurrent_years": max_concurrent_years,
+            "subtask_top_k": year_top_k,
+            "final_top_k": final_top_k,
+            "query_variants": expanded,
+            "expanded_queries": expanded,
+            "year_subtask_traces": [
+                {
+                    "year": result.get("year"),
+                    "question": result.get("question"),
+                    "metadata_filter": result.get("metadata_filter"),
+                    "expanded_queries": result.get("expanded_queries") or [],
+                    "retrieval_trace": result.get("retrieval_trace") or {},
+                    "rerank_trace": result.get("rerank_trace") or {},
+                    "evidence_ids": [item.get("chunk_id") for item in result.get("evidence") or []],
+                    "evidence_count": len(result.get("evidence") or []),
+                }
+                for result in year_results
+            ],
+            "intermediate_evidence_count": sum(len(result.get("evidence") or []) for result in year_results),
+            "final_evidence_count": len(evidence),
+            "cache_hit": False,
+            "generated_at": time.time(),
+        }
+        rerank_trace = {
+            "planning_mode": "year_scoped_decomposed",
+            "year_count": len(year_results),
+            "subtask_count": retrieval_trace["subtask_count"],
+            "subtask_rerank_traces": [result.get("rerank_trace") or {} for result in year_results],
+            "top": [
+                {
+                    "chunk_id": row.get("chunk_id"),
+                    "retrieval_scope_year": row.get("retrieval_scope_year"),
+                    "retrieval_subtask_id": row.get("retrieval_subtask_id"),
+                    "final_score": row.get("final_score"),
+                    "confidence_score": row.get("confidence_score"),
+                    "score": row.get("score"),
+                }
+                for row in evidence
+            ],
+        }
+        retrieval_result = {
+            "query_type": str(plan.get("query_type") or "fact_lookup"),
+            "evidence": evidence,
+            "candidates": evidence,
+            "retrieval_trace": retrieval_trace,
+            "rerank_trace": rerank_trace,
+        }
+        stage = {
+            "phase": "parallel_hybrid_retrieval",
+            "duration_ms": int((time.perf_counter() - started) * 1000),
+            "cache_precheck_hit": False,
+            "query_expansion_cache_hit": False,
+            "query_expansion_skipped": "",
+            "cache_hit": False,
+            "llm_query_expansion_used": any(bool(result.get("llm_expansion_used")) for result in year_results),
+            "query_variant_count": len(expanded),
+            "planning_mode": "year_scoped_decomposed",
+            "subtask_count": retrieval_trace["subtask_count"],
+            "year_count": len(year_results),
+            "intermediate_evidence_count": retrieval_trace["intermediate_evidence_count"],
+        }
+        return retrieval_result, expanded, llm_expanded_flat or None, bool(llm_expanded_flat), stage
+
+    async def _retrieve_year_scoped(
+        self,
+        question: str,
+        collection_name: str,
+        top_k: int,
+        query_type: str,
+        expand_query_num: int,
+        enable_cache: bool,
+        metadata_filter: Mapping[str, Any],
+    ) -> tuple[Dict[str, Any], List[str], List[str] | None, bool, Dict[str, Any]]:
+        started = time.perf_counter()
+        years = _metadata_filter_years(metadata_filter)
+        final_top_k = max(1, int(top_k))
+        subtask_top_k = max(1, int(top_k))
+        max_concurrent_subtasks = max(1, min(len(years) or 1, self.query_plan_max_concurrent_subtasks))
+        semaphore = asyncio.Semaphore(max_concurrent_subtasks)
+
+        async def run_year(index: int, year: int) -> Dict[str, Any]:
+            async with semaphore:
+                year_question = _year_scoped_question(question, year)
+                year_filter = _metadata_filter_for_years(metadata_filter, [year])
+                expanded, llm_expanded, llm_used = await self._expand_queries_for_retrieval(
+                    year_question,
+                    query_type,
+                    expand_query_num,
+                )
+                retrieval_result = await self.retriever.retrieve(
+                    question=year_question,
+                    collection_name=collection_name,
+                    top_k=subtask_top_k,
+                    query_type=query_type,
+                    expand_query_num=expand_query_num,
+                    enable_cache=enable_cache,
+                    expanded_queries=expanded,
+                    metadata_filter=year_filter,
+                )
+                evidence = []
+                for item in list(retrieval_result.get("evidence") or []):
+                    if not isinstance(item, dict):
+                        continue
+                    row = dict(item)
+                    row["retrieval_scope_year"] = year
+                    row["retrieval_subtask_id"] = f"year:{year}"
+                    row["retrieval_subtask_name"] = f"{year}年度"
+                    evidence.append(row)
+                return {
+                    "index": index,
+                    "year": year,
+                    "question": year_question,
+                    "metadata_filter": year_filter,
+                    "expanded_queries": expanded,
+                    "llm_expanded": llm_expanded,
+                    "llm_expansion_used": llm_used,
+                    "evidence": evidence,
+                    "retrieval_trace": dict(retrieval_result.get("retrieval_trace") or {}),
+                    "rerank_trace": dict(retrieval_result.get("rerank_trace") or {}),
+                }
+
+        year_results = await asyncio.gather(*(run_year(index, year) for index, year in enumerate(years)))
+        year_results = sorted(year_results, key=lambda item: int(item.get("index") or 0))
+        evidence = self._merge_year_scoped_evidence(year_results, final_top_k)
+        expanded: List[str] = []
+        llm_expanded_flat: List[str] = []
+        for result in year_results:
+            for item in list(result.get("expanded_queries") or []):
+                value = str(item or "").strip()
+                if value and value not in expanded:
+                    expanded.append(value)
+            for item in list(result.get("llm_expanded") or []):
+                value = str(item or "").strip()
+                if value and value not in llm_expanded_flat:
+                    llm_expanded_flat.append(value)
+
+        retrieval_trace = {
+            "collection_name": collection_name,
+            "query_type": query_type,
+            "planning_mode": "year_scoped",
+            "metadata_filter": dict(metadata_filter or {}),
+            "years": years,
+            "subtask_count": len(year_results),
+            "max_concurrent_subtasks": max_concurrent_subtasks,
+            "subtask_top_k": subtask_top_k,
+            "final_top_k": final_top_k,
+            "query_variants": expanded,
+            "expanded_queries": expanded,
+            "year_subtask_traces": [
+                {
+                    "year": result.get("year"),
+                    "question": result.get("question"),
+                    "metadata_filter": result.get("metadata_filter"),
+                    "expanded_queries": result.get("expanded_queries") or [],
+                    "retrieval_trace": result.get("retrieval_trace") or {},
+                    "rerank_trace": result.get("rerank_trace") or {},
+                    "evidence_ids": [item.get("chunk_id") for item in result.get("evidence") or []],
+                    "evidence_count": len(result.get("evidence") or []),
+                }
+                for result in year_results
+            ],
+            "intermediate_evidence_count": sum(len(result.get("evidence") or []) for result in year_results),
+            "final_evidence_count": len(evidence),
+            "cache_hit": False,
+            "generated_at": time.time(),
+        }
+        rerank_trace = {
+            "planning_mode": "year_scoped",
+            "subtask_count": len(year_results),
+            "subtask_rerank_traces": [result.get("rerank_trace") or {} for result in year_results],
+            "top": [
+                {
+                    "chunk_id": row.get("chunk_id"),
+                    "retrieval_scope_year": row.get("retrieval_scope_year"),
+                    "final_score": row.get("final_score"),
+                    "confidence_score": row.get("confidence_score"),
+                    "score": row.get("score"),
+                }
+                for row in evidence
+            ],
+        }
+        retrieval_result = {
+            "query_type": query_type,
+            "evidence": evidence,
+            "candidates": evidence,
+            "retrieval_trace": retrieval_trace,
+            "rerank_trace": rerank_trace,
+        }
+        stage = {
+            "phase": "parallel_hybrid_retrieval",
+            "duration_ms": int((time.perf_counter() - started) * 1000),
+            "cache_precheck_hit": False,
+            "query_expansion_cache_hit": False,
+            "query_expansion_skipped": "",
+            "cache_hit": False,
+            "llm_query_expansion_used": any(bool(result.get("llm_expansion_used")) for result in year_results),
+            "query_variant_count": len(expanded),
+            "planning_mode": "year_scoped",
+            "subtask_count": len(year_results),
+            "intermediate_evidence_count": retrieval_trace["intermediate_evidence_count"],
+        }
+        return retrieval_result, expanded, llm_expanded_flat or None, bool(llm_expanded_flat), stage
+
     async def _retrieve_with_cache_aware_expansion(
         self,
         question: str,
@@ -382,10 +1147,42 @@ class TrustedQAWorkflow:
         query_type: str,
         expand_query_num: int,
         enable_cache: bool,
+        metadata_filter: Mapping[str, Any] | None = None,
     ) -> tuple[Dict[str, Any], List[str], List[str] | None, bool, Dict[str, Any]]:
         started = time.perf_counter()
         effective_top_k = max(1, int(top_k))
         effective_expand_num = max(1, int(expand_query_num))
+        plan = build_query_plan(question, query_type)
+        use_year_scoped = _should_use_year_scoped_retrieval(question, query_type, metadata_filter)
+        if is_decomposed_plan(plan) and use_year_scoped:
+            return await self._retrieve_year_scoped_decomposed_plan(
+                plan=plan,
+                question=question,
+                collection_name=collection_name,
+                top_k=effective_top_k,
+                expand_query_num=effective_expand_num,
+                enable_cache=enable_cache,
+                metadata_filter=dict(metadata_filter or {}),
+            )
+        if is_decomposed_plan(plan):
+            return await self._retrieve_decomposed_plan(
+                plan=plan,
+                collection_name=collection_name,
+                top_k=effective_top_k,
+                expand_query_num=effective_expand_num,
+                enable_cache=enable_cache,
+                metadata_filter=metadata_filter,
+            )
+        if use_year_scoped:
+            return await self._retrieve_year_scoped(
+                question=question,
+                collection_name=collection_name,
+                top_k=effective_top_k,
+                query_type=query_type,
+                expand_query_num=effective_expand_num,
+                enable_cache=enable_cache,
+                metadata_filter=dict(metadata_filter or {}),
+            )
         cache_precheck_hit = False
         query_expansion_cache_hit = False
         expanded: List[str]
@@ -399,6 +1196,7 @@ class TrustedQAWorkflow:
                 collection_name=collection_name,
                 top_k=effective_top_k,
                 query_type=query_type,
+                metadata_filter=metadata_filter,
             )
 
         if cached_stage1 is not None:
@@ -434,6 +1232,7 @@ class TrustedQAWorkflow:
             expand_query_num=effective_expand_num,
             enable_cache=enable_cache,
             expanded_queries=expanded,
+            metadata_filter=metadata_filter,
         )
         trace = retrieval_result.setdefault("retrieval_trace", {})
         trace["query_expansion_skipped"] = "retrieval_cache_hit" if cache_precheck_hit else ("query_expansion_cache_hit" if query_expansion_cache_hit else "")
@@ -531,7 +1330,7 @@ class TrustedQAWorkflow:
         graph.add_conditional_edges(
             "run_clarify_gate",
             self._graph_route_after_clarify_gate,
-            {"clarify": "build_clarify_response", "retrieve": "retrieve_evidence"},
+            {"clarify": "build_clarify_response", "scope_refuse": "build_answer_response", "retrieve": "retrieve_evidence"},
         )
         graph.add_edge("retrieve_evidence", "evaluate_evidence")
         graph.add_conditional_edges(
@@ -600,8 +1399,9 @@ class TrustedQAWorkflow:
         query_type = str(understanding.get("query_type") or intent_trace.get("query_type") or "fact_lookup")
         intent_duration_ms = _duration_ms(started_at)
         skill_started_at = time.perf_counter()
-        selected_skill = understanding.get("selected_skill") or self.skill_registry.select_skill(query_type)
         slots = dict(understanding.get("slots") or {})
+        _plan, query_type, slots, intent_trace = self._apply_query_plan(question, query_type, slots, intent_trace)
+        selected_skill = self.skill_registry.select_skill(query_type)
         skill_package = selected_skill.package_metadata()
         observations = list(state.get("observations") or [])
         observations.append({"phase": "intent_slot_understanding_agent", "intent": intent_trace, "slots": slots, "duration_ms": intent_duration_ms})
@@ -625,14 +1425,25 @@ class TrustedQAWorkflow:
         collection_name = str(state.get("collection_name") or "default")
         slots = dict(state.get("slots") or {})
         selected_skill = state.get("selected_skill")
+        scope = await self._resolve_retrieval_scope(
+            question=str(state.get("effective_question") or state.get("question") or ""),
+            collection_name=collection_name,
+            query_type=query_type,
+            slots=slots,
+            conversation_state=state.get("conversation_state") or {},
+        )
         clarify = self._build_clarify_payload(query_type, collection_name, slots, selected_skill)
+        clarify = self._apply_scope_clarify(clarify, scope, slots)
+        scope_refuse_gate = self._scope_refuse_gate(scope) if scope.should_refuse and clarify.get("decision") != "clarify" else {}
         observations = list(state.get("observations") or [])
         observations.append(
             {
                 "phase": "clarify_gate",
                 "slots": slots,
                 "missing_slots": clarify.get("missing_slots") or [],
-                "decision": clarify.get("decision") or "answer",
+                "decision": "refuse" if scope_refuse_gate else (clarify.get("decision") or "answer"),
+                "retrieval_scope": scope.as_dict(),
+                "scope_refuse": scope_refuse_gate,
                 "duration_ms": _duration_ms(started_at),
             }
         )
@@ -641,6 +1452,12 @@ class TrustedQAWorkflow:
             {
                 "missing_slots": list(clarify.get("missing_slots") or []),
                 "clarify": clarify,
+                "slots": slots,
+                "retrieval_scope": scope.as_dict(),
+                "metadata_filter": scope.metadata_filter(),
+                "gate": scope_refuse_gate or state.get("gate") or {},
+                "evidence": [] if scope_refuse_gate else state.get("evidence"),
+                "retrieval_result": {"retrieval_trace": {"scope_refuse": scope_refuse_gate, "retrieval_scope": scope.as_dict()}, "rerank_trace": {}} if scope_refuse_gate else state.get("retrieval_result"),
                 "observations": observations,
             }
         )
@@ -648,7 +1465,12 @@ class TrustedQAWorkflow:
 
     def _graph_route_after_clarify_gate(self, state: Dict[str, Any]) -> str:
         clarify = state.get("clarify") or {}
-        return "clarify" if clarify.get("decision") == "clarify" else "retrieve"
+        if clarify.get("decision") == "clarify":
+            return "clarify"
+        gate = state.get("gate") or {}
+        if gate.get("decision") == "refuse":
+            return "scope_refuse"
+        return "retrieve"
 
     async def _graph_build_clarify_response(self, state: Dict[str, Any]) -> Dict[str, Any]:
         started_at = time.perf_counter()
@@ -684,6 +1506,7 @@ class TrustedQAWorkflow:
             query_type=query_type,
             expand_query_num=expand_query_num,
             enable_cache=bool(state.get("enable_cache", True)),
+            metadata_filter=state.get("metadata_filter") or {},
         )
         evidence = list(retrieval_result.get("evidence") or [])
         observations = list(state.get("observations") or [])
@@ -733,6 +1556,7 @@ class TrustedQAWorkflow:
         retry_question = str(gate.get("suggested_retry_query") or "").strip() or str(state.get("effective_question") or state.get("question") or "")
         query_type = str(state.get("query_type") or "fact_lookup")
         expand_query_num = max(1, int(state.get("expand_query_num") or 3))
+        retry_metadata_filter = gate.get("retry_metadata_filter") if isinstance(gate.get("retry_metadata_filter"), Mapping) else (state.get("metadata_filter") or {})
         retry_expanded, retry_llm_expanded, retry_llm_expansion_used = await self._expand_queries_for_retrieval(
             retry_question,
             query_type,
@@ -746,6 +1570,7 @@ class TrustedQAWorkflow:
             expand_query_num=expand_query_num,
             enable_cache=False,
             expanded_queries=retry_expanded,
+            metadata_filter=retry_metadata_filter,
         )
         evidence = list(retry_result.get("evidence") or state.get("evidence") or [])
         gate = await self.evidence_decision.evaluate(
@@ -796,7 +1621,16 @@ class TrustedQAWorkflow:
             gate["reason"] = gate.get("reason", "retry_limit_reached")
         if decision not in {"answer", "clarify", "refuse"}:
             decision = "refuse"
-        answer_payload = self.answer_generator.generate(question=question, query_type=query_type, evidence=evidence, decision=decision, gate_reason=gate.get("reason", ""))
+        slots = dict(state.get("slots") or {})
+        answer_scope = state.get("retrieval_scope") if isinstance(state.get("retrieval_scope"), Mapping) else slots.get("retrieval_scope")
+        answer_payload = self.answer_generator.generate(
+            question=question,
+            query_type=query_type,
+            evidence=evidence,
+            decision=decision,
+            gate_reason=gate.get("reason", ""),
+            gate_message=str(gate.get("message") or ""),
+        )
         llm_answer_used = False
         llm_answer_cache_hit = False
         if decision == "answer":
@@ -805,6 +1639,7 @@ class TrustedQAWorkflow:
                 query_type,
                 list(answer_payload.get("evidence") or []),
                 list(answer_payload.get("citations") or []),
+                scope=answer_scope if isinstance(answer_scope, Mapping) else None,
             )
             llm_answer = self._get_cached_answer(answer_cache_key) if bool(state.get("enable_cache", True)) else None
             if llm_answer:
@@ -815,6 +1650,7 @@ class TrustedQAWorkflow:
                     query_type=query_type,
                     evidence=answer_payload.get("evidence", []),
                     citations=answer_payload.get("citations", []),
+                    scope=answer_scope if isinstance(answer_scope, Mapping) else None,
                 )
             if _usable_llm_answer(llm_answer):
                 answer_payload["answer"] = llm_answer
@@ -1044,12 +1880,13 @@ class TrustedQAWorkflow:
         intent_trace = dict(understanding.get("intent_trace") or {})
         query_type = str(understanding.get("query_type") or intent_trace.get("query_type") or "fact_lookup")
         slots = dict(understanding.get("slots") or {})
+        _plan, query_type, slots, intent_trace = self._apply_query_plan(effective_question, query_type, slots, intent_trace)
         observations.append({"phase": "intent_slot_understanding_agent", "intent": intent_trace, "slots": slots, "duration_ms": intent_duration_ms})
         await _emit_progress_stage(progress_callback, observations[-1])
 
         skill_started_at = time.perf_counter()
         await _emit_progress_marker(progress_callback, "select_skill_from_registry")
-        selected_skill = understanding.get("selected_skill") or self.skill_registry.select_skill(query_type)
+        selected_skill = self.skill_registry.select_skill(query_type)
         skill_package = selected_skill.package_metadata()
         skill_duration_ms = _duration_ms(skill_started_at)
         observations.append({"phase": "select_skill_from_registry", "selected_skill": selected_skill.skill_name, "skill_package": skill_package, "duration_ms": skill_duration_ms})
@@ -1057,7 +1894,16 @@ class TrustedQAWorkflow:
 
         clarify_started_at = time.perf_counter()
         await _emit_progress_marker(progress_callback, "clarify_gate")
+        retrieval_scope = await self._resolve_retrieval_scope(
+            question=effective_question,
+            collection_name=collection_name,
+            query_type=query_type,
+            slots=slots,
+            conversation_state=conversation_state,
+        )
+        metadata_filter = retrieval_scope.metadata_filter()
         clarify = self._build_clarify_payload(query_type, collection_name, slots, selected_skill)
+        clarify = self._apply_scope_clarify(clarify, retrieval_scope, slots)
         clarify_duration_ms = _duration_ms(clarify_started_at)
         observations.append(
             {
@@ -1065,6 +1911,7 @@ class TrustedQAWorkflow:
                 "slots": slots,
                 "missing_slots": clarify.get("missing_slots") or [],
                 "decision": clarify.get("decision") or "answer",
+                "retrieval_scope": retrieval_scope.as_dict(),
                 "duration_ms": clarify_duration_ms,
             }
         )
@@ -1121,12 +1968,82 @@ class TrustedQAWorkflow:
             await _emit_response_finalize_stage(progress_callback, response)
             return response
 
+        if retrieval_scope.should_refuse:
+            gate = self._scope_refuse_gate(retrieval_scope)
+            answer_started_at = time.perf_counter()
+            await _emit_progress_marker(progress_callback, "answer_generation")
+            answer_payload = self.answer_generator.generate(
+                question=effective_question,
+                query_type=query_type,
+                evidence=[],
+                decision="refuse",
+                gate_reason=gate.get("reason", ""),
+                gate_message=str(gate.get("message") or ""),
+            )
+            answer_observation = {"phase": "answer_generation", "duration_ms": _duration_ms(answer_started_at), "llm_answer_used": False}
+            observations.append(answer_observation)
+            await _emit_progress_stage(progress_callback, answer_observation)
+            response = self._build_response(
+                sid,
+                query_type,
+                "refuse",
+                answer_payload,
+                {
+                    "expanded_queries": [],
+                    "observations": observations,
+                    "intent_trace": intent_trace,
+                    "slots": slots,
+                    "retrieval_scope": retrieval_scope.as_dict(),
+                    "metadata_filter": metadata_filter,
+                    "scope_refuse": gate,
+                },
+                {},
+                selected_skill.skill_name,
+                observations=observations,
+                expanded_queries=[],
+                gate=gate,
+            )
+            response = self._apply_response_traces(
+                response=response,
+                selected_skill=selected_skill,
+                skill_package=skill_package,
+                intent_trace=intent_trace,
+                slots=slots,
+                gate=gate,
+                llm_expansion_used=False,
+                llm_answer_used=False,
+                llm_answer_cache_hit=False,
+                workflow_runner="python",
+                evaluate=False,
+                question=effective_question,
+                original_question=original_question,
+                effective_question=effective_question,
+                conversation_state=conversation_state,
+                turn_route=turn_route,
+                workflow_duration_ms=_duration_ms(workflow_started_at),
+            )
+            await _emit_progress_marker(progress_callback, "finalize_response")
+            await self._save(sid, original_question, response)
+            await self._update_conversation_focus(
+                session_id=sid,
+                effective_question=effective_question,
+                query_type=query_type,
+                slots=slots,
+                response=response,
+                conversation_state=conversation_state,
+                turn_route=turn_route,
+            )
+            self._set_workflow_duration(response, _duration_ms(workflow_started_at))
+            await _emit_response_finalize_stage(progress_callback, response)
+            return response
+
         response_cache_key = await self._response_cache_key(
             effective_question,
             collection_name,
             query_type,
             max(1, int(top_k)),
             max(1, int(expand_query_num)),
+            metadata_filter=metadata_filter,
         )
         cached_response = self._get_cached_response(response_cache_key) if enable_cache else None
         if cached_response is not None:
@@ -1205,6 +2122,7 @@ class TrustedQAWorkflow:
             query_type=query_type,
             expand_query_num=max(1, int(expand_query_num)),
             enable_cache=enable_cache,
+            metadata_filter=metadata_filter,
         )
         evidence = list(retrieval_result.get("evidence") or [])
         retrieval_observation = {**retrieval_stage, "evidence_count": len(evidence)}
@@ -1232,6 +2150,7 @@ class TrustedQAWorkflow:
             await _emit_progress_marker(progress_callback, "retry_retrieval")
             retry_count += 1
             retry_question = str(gate.get("suggested_retry_query") or "").strip() or effective_question
+            retry_metadata_filter = gate.get("retry_metadata_filter") if isinstance(gate.get("retry_metadata_filter"), Mapping) else metadata_filter
             retry_expanded, retry_llm_expanded, retry_llm_expansion_used = await self._expand_queries_for_retrieval(
                 retry_question,
                 query_type,
@@ -1247,6 +2166,7 @@ class TrustedQAWorkflow:
                 expand_query_num=max(1, int(expand_query_num)),
                 enable_cache=False,
                 expanded_queries=retry_expanded,
+                metadata_filter=retry_metadata_filter,
             )
             evidence = list(retry_result.get("evidence") or evidence)
             retrieval_result = retry_result
@@ -1275,7 +2195,15 @@ class TrustedQAWorkflow:
 
         answer_started_at = time.perf_counter()
         await _emit_progress_marker(progress_callback, "answer_generation")
-        answer_payload = self.answer_generator.generate(question=effective_question, query_type=query_type, evidence=evidence, decision=decision, gate_reason=gate.get("reason", ""))
+        answer_scope = slots.get("retrieval_scope") if isinstance(slots.get("retrieval_scope"), Mapping) else None
+        answer_payload = self.answer_generator.generate(
+            question=effective_question,
+            query_type=query_type,
+            evidence=evidence,
+            decision=decision,
+            gate_reason=gate.get("reason", ""),
+            gate_message=str(gate.get("message") or ""),
+        )
         llm_answer_used = False
         llm_answer_cache_hit = False
         if decision == "answer":
@@ -1284,6 +2212,7 @@ class TrustedQAWorkflow:
                 query_type,
                 list(answer_payload.get("evidence") or []),
                 list(answer_payload.get("citations") or []),
+                scope=answer_scope,
             )
             llm_answer = self._get_cached_answer(answer_cache_key) if enable_cache else None
             if llm_answer:
@@ -1294,6 +2223,7 @@ class TrustedQAWorkflow:
                     query_type=query_type,
                     evidence=answer_payload.get("evidence", []),
                     citations=answer_payload.get("citations", []),
+                    scope=answer_scope,
                 )
             if _usable_llm_answer(llm_answer):
                 answer_payload["answer"] = llm_answer
@@ -1460,6 +2390,10 @@ class TrustedQAWorkflow:
         response["retrieval_trace"]["skill_package"] = skill_package
         response["retrieval_trace"]["intent_trace"] = intent_trace
         response["retrieval_trace"]["slots"] = slots
+        if isinstance(slots.get("retrieval_scope"), dict):
+            response["retrieval_trace"]["retrieval_scope"] = slots.get("retrieval_scope")
+        if isinstance(slots.get("metadata_filter"), dict):
+            response["retrieval_trace"]["metadata_filter"] = slots.get("metadata_filter")
         if gate:
             response["skill_trace"]["evidence_audit"] = gate.get("evidence_audit", {})
             response["retrieval_trace"]["evidence_audit"] = gate.get("evidence_audit", {})

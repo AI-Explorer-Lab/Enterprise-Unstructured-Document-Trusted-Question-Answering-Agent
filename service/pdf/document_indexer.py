@@ -17,6 +17,7 @@ from service.embedding.embedding_service import EmbeddingService, build_embeddin
 from service.pdf.mineru_client import MinerUClient
 from service.pdf.pdf_loader import collect_pdf_documents
 from service.pdf.structured_chunker import ChunkingConfig, StructuredChunker
+from service.agent.company_registry import get_company_registry
 from service.retrieval.runtime import get_runtime_repository, upsert_runtime_chunks
 from service.session.session_service import get_session_service
 from utils.config_loader import get_app_config
@@ -114,14 +115,33 @@ class DocumentIndexingService:
         pdf_path: str,
         collection_name: str = "default",
         doc_source: str | None = None,
+        company_id: str = "",
+        year: int | None = None,
         force_rebuild: bool = False,
         progress_callback: ProgressCallback | None = None,
     ) -> Dict[str, Any]:
         collection = (collection_name or "default").strip() or "default"
+        company_profile = get_company_registry().resolve(company_id=company_id)
+        if company_profile is None:
+            raise ValidationException(
+                message="company_id is required and must exist in the company registry.",
+                detail={"collection_name": collection, "company_id": company_id},
+            )
+        try:
+            report_year = int(year or 0)
+        except Exception:
+            report_year = 0
+        if report_year < 1900 or report_year > 2100:
+            raise ValidationException(
+                message="year is required and must be a valid report year.",
+                detail={"collection_name": collection, "company_id": company_profile.company_id, "year": year},
+            )
         overall_timer = start_operation_step(
             "index.document",
             pdf_path=pdf_path,
             collection_name=collection,
+            company_id=company_profile.company_id,
+            year=report_year,
             force_rebuild=force_rebuild,
         )
         try:
@@ -197,6 +217,9 @@ class DocumentIndexingService:
                                 {
                                     "doc_id": skipped_detail["doc_id"],
                                     "collection_name": collection,
+                                    "company_id": company_profile.company_id,
+                                    "company_name": company_profile.company_name,
+                                    "year": report_year,
                                     "doc_source": doc_source_value,
                                     "doc_hash": pdf_doc.file_hash,
                                     "page_count": skipped_detail["page_count"],
@@ -394,6 +417,8 @@ class DocumentIndexingService:
                         normalized["title"] = Path(pdf_doc.path).stem
                         metadata = normalized.get("metadata") or {}
                         if isinstance(metadata, dict):
+                            metadata.update(company_profile.as_metadata())
+                            metadata["year"] = report_year
                             metadata.setdefault("doc_hash", pdf_doc.file_hash)
                             metadata.setdefault("page_count", page_count)
                             metadata.setdefault("doc_source", doc_source_value)
@@ -406,6 +431,9 @@ class DocumentIndexingService:
                     document_summary = {
                         "doc_id": doc_id,
                         "collection_name": collection,
+                        "company_id": company_profile.company_id,
+                        "company_name": company_profile.company_name,
+                        "year": report_year,
                         "doc_source": doc_source_value,
                         "doc_hash": pdf_doc.file_hash,
                         "page_count": page_count,

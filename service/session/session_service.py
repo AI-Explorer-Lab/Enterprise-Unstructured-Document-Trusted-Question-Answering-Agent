@@ -385,7 +385,9 @@ class SessionService:
             focus = session_metadata.get("conversation_focus") if isinstance(session_metadata, dict) else None
             if not isinstance(focus, dict):
                 focus = None
-            title = _clean_str(row.get("last_user_question")) or "新对话"
+            pending_question = _clean_str(session_metadata.get("pending_question")) if isinstance(session_metadata, dict) else ""
+
+            title = _clean_str(row.get("last_user_question")) or pending_question or "新对话"
             turn_type = ""
             if isinstance(assistant_metadata, dict):
                 turn_type = _clean_str(turn_routing.get("turn_type") or assistant_metadata.get("turn_type"))
@@ -398,7 +400,7 @@ class SessionService:
                     "turn_count": int(row.get("turn_count") or 0),
                     "updated_at": row.get("updated_at").isoformat() if row.get("updated_at") else "",
                     "created_at": row.get("created_at").isoformat() if row.get("created_at") else "",
-                    "last_user_question": row.get("last_user_question") or "",
+                    "last_user_question": row.get("last_user_question") or pending_question,
                     "last_decision": row.get("last_decision") or "",
                     "last_query_type": row.get("last_query_type") or "",
                     "last_confidence": float(row.get("last_confidence") or 0.0),

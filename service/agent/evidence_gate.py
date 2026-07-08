@@ -1,5 +1,6 @@
 ﻿from __future__ import annotations
 
+import re
 from typing import Any, Dict, List, Mapping, Sequence
 
 from service.agent.controlled_agents import EvidenceAuditAgent, merge_audit_and_rule_gate
@@ -19,6 +20,78 @@ def _score_with_source(row: Dict[str, Any]) -> tuple[float, str]:
         except Exception:
             continue
     return 0.0, ""
+
+
+def _clean(value: Any) -> str:
+    return str(value or "").strip()
+
+
+def _metadata_value(row: Mapping[str, Any], key: str) -> Any:
+    if row.get(key) not in (None, ""):
+        return row.get(key)
+    metadata = row.get("metadata") or row.get("metadata_json") or {}
+    if isinstance(metadata, Mapping):
+        return metadata.get(key)
+    return None
+
+
+def _filter_values(value: Any) -> list[str]:
+    values = value if isinstance(value, (list, tuple, set)) else [value]
+    result: list[str] = []
+    for item in values:
+        text = _clean(item)
+        if text and text not in result:
+            result.append(text)
+    return result
+
+
+def _matches_metadata_filter(row: Mapping[str, Any], metadata_filter: Mapping[str, Any]) -> bool:
+    for key in ("company_id", "year"):
+        expected = _filter_values(metadata_filter.get(key))
+        if expected and _clean(_metadata_value(row, key)) not in expected:
+            return False
+    return True
+
+
+def _years_from_value(value: Any) -> List[int]:
+    values = value if isinstance(value, (list, tuple, set)) else [value]
+    years: List[int] = []
+    for item in values:
+        for match in re.findall(r"(?:19|20)\d{2}", str(item or "")):
+            year = int(match)
+            if year not in years:
+                years.append(year)
+    return years
+
+
+def _requested_years(slots: Mapping[str, Any]) -> List[int]:
+    scope = slots.get("retrieval_scope")
+    if isinstance(scope, Mapping):
+        years = _years_from_value(scope.get("years"))
+        if years:
+            return years
+    metadata_filter = slots.get("metadata_filter")
+    if isinstance(metadata_filter, Mapping):
+        years = _years_from_value(metadata_filter.get("year"))
+        if years:
+            return years
+    return _years_from_value(slots.get("years"))
+
+
+def _evidence_years(rows: Sequence[Mapping[str, Any]]) -> List[int]:
+    years: List[int] = []
+    for row in rows:
+        for year in _years_from_value(_metadata_value(row, "year")):
+            if year not in years:
+                years.append(year)
+    return years
+
+
+def _retry_filter_for_years(slots: Mapping[str, Any], years: Sequence[int]) -> Dict[str, Any]:
+    metadata_filter = slots.get("metadata_filter")
+    retry_filter = dict(metadata_filter or {}) if isinstance(metadata_filter, Mapping) else {}
+    retry_filter["year"] = list(years)
+    return retry_filter
 
 
 def _confidence(rows: List[Dict[str, Any]]) -> float:
@@ -112,6 +185,30 @@ class EvidenceGate:
         if query_type == "multi_doc_compare" and len(docs) < 2:
             diagnostics["coverage_warnings"].append("multi_doc_evidence_missing")
 
+        requested_years = _requested_years(slots)
+        if len(requested_years) > 1 and query_type in {"table_qa", "fact_lookup", "multi_doc_compare", "summarization", "report_generation"}:
+            evidence_years = _evidence_years(rows)
+            missing_years = [year for year in requested_years if year not in evidence_years]
+            diagnostics["requested_years"] = requested_years
+            diagnostics["evidence_years"] = evidence_years
+            diagnostics["missing_years"] = missing_years
+            if missing_years:
+                diagnostics["coverage_warnings"].append("missing_year_evidence")
+                decision = "retry" if retry_count < self.retry_limit else "refuse"
+                reason = "missing_year_evidence" if decision == "retry" else "missing_year_evidence_after_retry"
+                missing_hint = "、".join(str(year) for year in missing_years)
+                retry_terms = " ".join(str(item or "").strip() for item in [slots.get("company"), slots.get("metric")] if str(item or "").strip())
+                return {
+                    "decision": decision,
+                    "reason": reason,
+                    **diagnostics,
+                    "confidence": _confidence(rows),
+                    "missing_years": missing_years,
+                    "message": f"检索到的证据未覆盖问题要求的全部年份，缺少 {missing_hint} 年的相关证据，无法可靠完成多年份回答。",
+                    "suggested_retry_query": f"{missing_hint} 年度 {retry_terms}".strip(),
+                    "retry_metadata_filter": _retry_filter_for_years(slots, missing_years),
+                }
+
         coverage_sensitive_types = {"summarization", "report_generation", "multi_doc_compare"}
         if query_type in coverage_sensitive_types and len(rows) < self.evidence_min_docs:
             diagnostics["coverage_warnings"].append("insufficient_doc_coverage")
@@ -156,6 +253,23 @@ class EvidenceDecisionEngine:
         table_evidence_quota: int = 2,
     ) -> Dict[str, Any]:
         rows = [dict(item) for item in evidence if isinstance(item, Mapping)]
+        metadata_filter = (slots or {}).get("metadata_filter") if isinstance(slots, Mapping) else None
+        scope_mismatches: List[Dict[str, Any]] = []
+        if isinstance(metadata_filter, Mapping) and metadata_filter:
+            kept_rows: List[Dict[str, Any]] = []
+            for row in rows:
+                if _matches_metadata_filter(row, metadata_filter):
+                    kept_rows.append(row)
+                else:
+                    scope_mismatches.append(
+                        {
+                            "chunk_id": row.get("chunk_id", ""),
+                            "doc_source": row.get("doc_source", ""),
+                            "company_id": _metadata_value(row, "company_id"),
+                            "year": _metadata_value(row, "year"),
+                        }
+                    )
+            rows = kept_rows
         rule_gate = self.rule_gate.evaluate(
             rows,
             query_type=query_type,
@@ -182,6 +296,9 @@ class EvidenceDecisionEngine:
                 rerank_trace=rerank_trace,
             )
         merged = merge_audit_and_rule_gate(rule_gate, rule_audit)
+        if scope_mismatches:
+            merged["scope_mismatch_count"] = len(scope_mismatches)
+            merged["scope_mismatches"] = scope_mismatches[:10]
         merged["rule_gate"] = rule_gate
         merged["evidence_audit"] = rule_audit
         if merged.get("decision") == "retry" and not str(merged.get("suggested_retry_query") or "").strip():

@@ -18,6 +18,7 @@ class RetrievalCandidate:
     doc_id: str = ""
     doc_source: str = ""
     page_idx: int | None = None
+    page_range: str = ""
     chunk_index: int | None = None
     chunk_type: str = "text"
     heading_path: str = ""
@@ -28,6 +29,11 @@ class RetrievalCandidate:
     sub_table_id: str = ""
     table_header_text: str = ""
     table_context_text: str = ""
+    company_id: str = ""
+    company_name: str = ""
+    year: Any = None
+    metadata: Dict[str, Any] = field(default_factory=dict)
+    metadata_json: Dict[str, Any] = field(default_factory=dict)
     dense_score: float = 0.0
     bm25_score: float = 0.0
     metadata_boost: float = 0.0
@@ -62,6 +68,18 @@ class RetrievalCandidate:
         payload.setdefault("raw_doc", str(payload.get("raw_doc") or payload.get("content") or ""))
         payload.setdefault("chunk_type", str(payload.get("chunk_type") or "text"))
         payload.setdefault("source_channels", list(payload.get("source_channels") or []))
+        metadata = payload.get("metadata_json") or payload.get("metadata") or {}
+        metadata = dict(metadata) if isinstance(metadata, Mapping) else {}
+        payload.setdefault("page_range", str(metadata.get("page_range") or ""))
+        payload.setdefault("company_id", str(metadata.get("company_id") or ""))
+        payload.setdefault("company_name", str(metadata.get("company_name") or ""))
+        payload.setdefault("year", metadata.get("year"))
+        for key in ("page_range", "company_id", "company_name", "year"):
+            value = payload.get(key)
+            if value not in (None, ""):
+                metadata.setdefault(key, value)
+        payload.setdefault("metadata", metadata)
+        payload.setdefault("metadata_json", metadata)
         return cls(**{k: payload.get(k) for k in cls.__dataclass_fields__.keys()})
 
 

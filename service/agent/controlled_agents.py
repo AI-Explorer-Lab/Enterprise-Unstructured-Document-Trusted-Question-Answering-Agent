@@ -65,7 +65,7 @@ INTENT_NAMES = {
 SLOT_KEYS = ("years", "metric", "period", "target_statement", "compare_targets", "scope", "table_name", "unit", "focus")
 FINAL_AUDIT_DECISIONS = {"answer", "retry", "refuse"}
 DECISION_RANK = {"answer": 0, "retry": 1, "refuse": 2}
-HARD_RULE_REASONS = {"no_evidence", "no_evidence_after_retry"}
+HARD_RULE_REASONS = {"no_evidence", "no_evidence_after_retry", "missing_year_evidence", "missing_year_evidence_after_retry"}
 YEAR_RE = re.compile(r"(?:19|20)\d{2}")
 NUMBER_RE = re.compile(r"[-+]?\d+(?:\.\d+)?")
 
@@ -879,7 +879,7 @@ class EvidenceAuditAgent:
             query_type=query_type,
             slots=slots,
             evidence=evidence,
-            limit=6,
+            limit=9,
         )
         parsed = await _safe_structured_json(
             self.llm_service,
