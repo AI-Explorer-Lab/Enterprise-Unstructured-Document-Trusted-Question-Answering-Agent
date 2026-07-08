@@ -99,6 +99,63 @@ def _json_dumps(value: Mapping[str, Any]) -> str:
     return json.dumps(dict(value), ensure_ascii=False, default=str)
 
 
+def _metadata_value(row: Mapping[str, Any], key: str) -> Any:
+    if key in row and row.get(key) not in (None, ""):
+        return row.get(key)
+    metadata = row.get("metadata_json") or row.get("metadata") or {}
+    if isinstance(metadata, str):
+        try:
+            metadata = json.loads(metadata)
+        except Exception:
+            metadata = {}
+    if isinstance(metadata, Mapping):
+        return metadata.get(key)
+    return None
+
+
+def _normalize_filter_values(value: Any) -> list[str]:
+    values = value if isinstance(value, (list, tuple, set)) else [value]
+    result: list[str] = []
+    for item in values:
+        text = _clean_text(item)
+        if text and text not in result:
+            result.append(text)
+    return result
+
+
+def _matches_metadata_filter(row: Mapping[str, Any], metadata_filter: Mapping[str, Any] | None) -> bool:
+    if not metadata_filter:
+        return True
+    for key in ("company_id", "year"):
+        expected = _normalize_filter_values(metadata_filter.get(key))
+        if not expected:
+            continue
+        actual = _clean_text(_metadata_value(row, key))
+        if actual not in expected:
+            return False
+    return True
+
+
+def _metadata_filter_sql(metadata_filter: Mapping[str, Any] | None) -> tuple[str, Dict[str, Any]]:
+    if not metadata_filter:
+        return "", {}
+    clauses: list[str] = []
+    params: Dict[str, Any] = {}
+    for key in ("company_id", "year"):
+        values = _normalize_filter_values(metadata_filter.get(key))
+        if not values:
+            continue
+        names = []
+        for index, value in enumerate(values):
+            name = f"meta_{key}_{index}"
+            params[name] = value
+            names.append(f":{name}")
+        clauses.append(f"(metadata_json ->> '{key}') IN ({', '.join(names)})")
+    if not clauses:
+        return "", {}
+    return " AND " + " AND ".join(clauses), params
+
+
 def _vector_literal(values: Sequence[float], dim: int) -> str:
     vector = _normalize_vector([_as_float(value) for value in values], dim)
     return "[" + ",".join(f"{value:.10f}" for value in vector) + "]"
@@ -305,6 +362,63 @@ class PgvectorRepository:
             return len(self._local_chunks)
         return len([row for row in self._local_chunks if str(row.get("collection_name") or "") == collection])
 
+    async def list_document_scopes(self, collection_name: str = "") -> list[Dict[str, Any]]:
+        collection = _clean_text(collection_name)
+        if self.backend == "pgvector":
+            await self._ensure_schema_ready()
+            sql = "SELECT metadata_json FROM pdf_chunks"
+            params: Dict[str, Any] = {}
+            if collection:
+                sql += " WHERE collection_name = :collection_name"
+                params["collection_name"] = collection
+            scopes: Dict[tuple[str, str], Dict[str, Any]] = {}
+            async with get_async_session(backend="pgvector", database_url=self.database_url) as session:
+                records = (await session.execute(text(sql), params)).mappings()
+                for record in records:
+                    metadata = record.get("metadata_json") or {}
+                    if isinstance(metadata, str):
+                        try:
+                            metadata = json.loads(metadata)
+                        except Exception:
+                            metadata = {}
+                    if not isinstance(metadata, Mapping):
+                        continue
+                    company_id = _clean_text(metadata.get("company_id"))
+                    year = _clean_text(metadata.get("year"))
+                    if not company_id or not year:
+                        continue
+                    key = (company_id, year)
+                    scopes.setdefault(
+                        key,
+                        {
+                            "company_id": company_id,
+                            "company_name": _clean_text(metadata.get("company_name")) or company_id,
+                            "company_aliases": list(metadata.get("company_aliases") or []),
+                            "year": int(float(year)),
+                        },
+                    )
+            return sorted(scopes.values(), key=lambda item: (str(item.get("company_id")), int(item.get("year") or 0)))
+
+        scopes: Dict[tuple[str, str], Dict[str, Any]] = {}
+        for row in self._local_chunks:
+            if collection and str(row.get("collection_name") or "") != collection:
+                continue
+            company_id = _clean_text(_metadata_value(row, "company_id"))
+            year = _clean_text(_metadata_value(row, "year"))
+            if not company_id or not year:
+                continue
+            key = (company_id, year)
+            scopes.setdefault(
+                key,
+                {
+                    "company_id": company_id,
+                    "company_name": _clean_text(_metadata_value(row, "company_name")) or company_id,
+                    "company_aliases": list(_metadata_value(row, "company_aliases") or []),
+                    "year": int(float(year)),
+                },
+            )
+        return sorted(scopes.values(), key=lambda item: (str(item.get("company_id")), int(item.get("year") or 0)))
+
     def list_local_chunks(self, collection_name: str = "") -> list[Dict[str, Any]]:
         if not collection_name:
             return [dict(item) for item in self._local_chunks]
@@ -321,6 +435,7 @@ class PgvectorRepository:
         top_k: int,
         query_text: str = "",
         chunk_type: str | None = None,
+        metadata_filter: Mapping[str, Any] | None = None,
     ) -> list[Dict[str, Any]]:
         if self.backend == "pgvector":
             return await self._dense_search_pgvector(
@@ -329,6 +444,7 @@ class PgvectorRepository:
                 top_k=top_k,
                 query_text=query_text,
                 chunk_type=chunk_type,
+                metadata_filter=metadata_filter,
             )
 
         embedding = query_embedding
@@ -341,6 +457,8 @@ class PgvectorRepository:
             if collection_name and str(chunk.get("collection_name") or "") != collection_name:
                 continue
             if chunk_type and str(chunk.get("chunk_type") or "") != chunk_type:
+                continue
+            if not _matches_metadata_filter(chunk, metadata_filter):
                 continue
 
             score = _cosine_similarity(normalized_query, chunk.get("embedding") or [])
@@ -360,6 +478,7 @@ class PgvectorRepository:
         top_k: int,
         chunk_type: str | None = None,
         table_only: bool = False,
+        metadata_filter: Mapping[str, Any] | None = None,
     ) -> list[Dict[str, Any]]:
         effective_chunk_type = "table" if table_only else chunk_type
 
@@ -369,6 +488,7 @@ class PgvectorRepository:
                 query_text=query_text,
                 top_k=top_k,
                 chunk_type=effective_chunk_type,
+                metadata_filter=metadata_filter,
             )
 
         filtered = []
@@ -376,6 +496,8 @@ class PgvectorRepository:
             if collection_name and str(chunk.get("collection_name") or "") != collection_name:
                 continue
             if effective_chunk_type and str(chunk.get("chunk_type") or "") != effective_chunk_type:
+                continue
+            if not _matches_metadata_filter(chunk, metadata_filter):
                 continue
             filtered.append(chunk)
 
@@ -398,6 +520,7 @@ class PgvectorRepository:
         top_k: int,
         chunk_type: str | None = None,
         table_only: bool = False,
+        metadata_filter: Mapping[str, Any] | None = None,
     ) -> Dict[str, list[Dict[str, Any]]]:
         effective_chunk_type = "table" if table_only else chunk_type
         queries = [str(query or "").strip() for query in query_texts if coarse_tokenize(str(query or ""))]
@@ -409,6 +532,7 @@ class PgvectorRepository:
                 collection_name=collection_name,
                 top_k=top_k,
                 chunk_type=effective_chunk_type,
+                metadata_filter=metadata_filter,
             )
         else:
             candidates = []
@@ -416,6 +540,8 @@ class PgvectorRepository:
                 if collection_name and str(chunk.get("collection_name") or "") != collection_name:
                     continue
                 if effective_chunk_type and str(chunk.get("chunk_type") or "") != effective_chunk_type:
+                    continue
+                if not _matches_metadata_filter(chunk, metadata_filter):
                     continue
                 candidates.append(dict(chunk))
 
@@ -431,13 +557,20 @@ class PgvectorRepository:
             for query in queries
         }
 
-    async def table_search(self, collection_name: str, query_text: str, top_k: int) -> list[Dict[str, Any]]:
+    async def table_search(
+        self,
+        collection_name: str,
+        query_text: str,
+        top_k: int,
+        metadata_filter: Mapping[str, Any] | None = None,
+    ) -> list[Dict[str, Any]]:
         return await self.keyword_search(
             collection_name=collection_name,
             query_text=query_text,
             top_k=top_k,
             chunk_type="table",
             table_only=True,
+            metadata_filter=metadata_filter,
         )
 
     def _prepare_chunk(self, source: Mapping[str, Any]) -> Dict[str, Any]:
@@ -467,6 +600,9 @@ class PgvectorRepository:
         sub_table_id = _clean_text(chunk.get("sub_table_id") or metadata.get("sub_table_id"))
         table_header_text = _clean_text(chunk.get("table_header_text") or metadata.get("table_header_text"))
         table_context_text = _clean_text(chunk.get("table_context_text") or metadata.get("table_context_text"))
+        company_id = _clean_text(chunk.get("company_id") or metadata.get("company_id"))
+        company_name = _clean_text(chunk.get("company_name") or metadata.get("company_name"))
+        year = _nullable_int(chunk.get("year") if chunk.get("year") is not None else metadata.get("year"))
         search_text = "\n".join(part for part in [content, heading_path, table_header_text, table_context_text] if part)
 
         embedding = chunk.get("embedding")
@@ -495,6 +631,9 @@ class PgvectorRepository:
             "sub_table_id": sub_table_id,
             "table_header_text": table_header_text,
             "table_context_text": table_context_text,
+            "company_id": company_id,
+            "company_name": company_name,
+            "year": year,
             "search_text": search_text or content,
             "content": content,
             "raw_doc": content,
@@ -594,7 +733,15 @@ class PgvectorRepository:
                 "title": row.get("title") or "",
                 "doc_hash": row.get("doc_hash") or "",
                 "page_count": max(0, page_count),
-                "metadata_json": _json_dumps({"doc_source": row["doc_source"], "doc_hash": row.get("doc_hash") or ""}),
+                "metadata_json": _json_dumps(
+                    {
+                        "doc_source": row["doc_source"],
+                        "doc_hash": row.get("doc_hash") or "",
+                        "company_id": row.get("company_id") or "",
+                        "company_name": row.get("company_name") or "",
+                        "year": row.get("year"),
+                    }
+                ),
             }
             current = docs.get(str(row["doc_id"]))
             if current is None or doc_payload["page_count"] > current["page_count"]:
@@ -635,6 +782,7 @@ class PgvectorRepository:
         top_k: int,
         query_text: str,
         chunk_type: str | None,
+        metadata_filter: Mapping[str, Any] | None = None,
     ) -> list[Dict[str, Any]]:
         if query_embedding is None:
             query_embedding = deterministic_embedding(query_text, self.embedding_dim)
@@ -642,6 +790,7 @@ class PgvectorRepository:
         vector_literal = _vector_literal(query_embedding, self.embedding_dim)
         await self._ensure_schema_ready()
 
+        filter_clause, filter_params = _metadata_filter_sql(metadata_filter)
         sql = text(
             """
             SELECT
@@ -655,9 +804,10 @@ class PgvectorRepository:
             FROM pdf_chunks
             WHERE (:collection_name = '' OR collection_name = :collection_name)
               AND (:chunk_type = '' OR metadata_json ->> 'chunk_type' = :chunk_type)
+              {filter_clause}
             ORDER BY embedding <=> CAST(:query_vector AS vector)
             LIMIT :top_k
-            """
+            """.format(filter_clause=filter_clause)
         )
 
         rows: list[Dict[str, Any]] = []
@@ -670,6 +820,7 @@ class PgvectorRepository:
                         "collection_name": collection_name,
                         "chunk_type": chunk_type or "",
                         "top_k": max(1, int(top_k)),
+                        **filter_params,
                     },
                 )
             ).mappings()
@@ -699,6 +850,9 @@ class PgvectorRepository:
                     "sub_table_id": metadata.get("sub_table_id") or "",
                     "table_header_text": metadata.get("table_header_text") or "",
                     "table_context_text": metadata.get("table_context_text") or "",
+                    "company_id": metadata.get("company_id") or "",
+                    "company_name": metadata.get("company_name") or "",
+                    "year": metadata.get("year"),
                     "dense_score": max(0.0, min(1.0, _as_float(record.get("dense_score")))),
                 }
                 payload["similarity"] = payload["dense_score"]
@@ -712,6 +866,7 @@ class PgvectorRepository:
         query_text: str,
         top_k: int,
         chunk_type: str | None,
+        metadata_filter: Mapping[str, Any] | None = None,
     ) -> list[Dict[str, Any]]:
         await self._ensure_schema_ready()
 
@@ -722,6 +877,7 @@ class PgvectorRepository:
             collection_name=collection_name,
             top_k=top_k,
             chunk_type=chunk_type,
+            metadata_filter=metadata_filter,
         )
 
         retriever = SparseBM25Retriever(k1=self._sparse_retriever.k1, b=self._sparse_retriever.b)
@@ -738,9 +894,11 @@ class PgvectorRepository:
         collection_name: str,
         top_k: int,
         chunk_type: str | None,
+        metadata_filter: Mapping[str, Any] | None = None,
     ) -> list[Dict[str, Any]]:
         await self._ensure_schema_ready()
 
+        filter_clause, filter_params = _metadata_filter_sql(metadata_filter)
         sql = text(
             """
             SELECT
@@ -755,9 +913,10 @@ class PgvectorRepository:
             FROM pdf_chunks
             WHERE (:collection_name = '' OR collection_name = :collection_name)
               AND (:chunk_type = '' OR chunk_type = :chunk_type)
+              {filter_clause}
             ORDER BY id DESC
             LIMIT :scan_limit
-            """
+            """.format(filter_clause=filter_clause)
         )
 
         scan_limit = max(200, int(top_k) * 40, self.sparse_scan_limit)
@@ -770,6 +929,7 @@ class PgvectorRepository:
                         "collection_name": collection_name,
                         "chunk_type": chunk_type or "",
                         "scan_limit": scan_limit,
+                        **filter_params,
                     },
                 )
             ).mappings()
@@ -803,6 +963,9 @@ class PgvectorRepository:
                     "sub_table_id": metadata.get("sub_table_id") or "",
                     "table_header_text": metadata.get("table_header_text") or "",
                     "table_context_text": metadata.get("table_context_text") or "",
+                    "company_id": metadata.get("company_id") or "",
+                    "company_name": metadata.get("company_name") or "",
+                    "year": metadata.get("year"),
                 })
 
         return candidates

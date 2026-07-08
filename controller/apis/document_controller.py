@@ -13,6 +13,7 @@ from pydantic import ValidationError
 
 from domain.req import DocumentIndexRequest
 from exceptions.business_exception import ValidationException
+from service.agent.company_registry import get_company_registry
 from service.pdf.document_indexer import get_document_indexing_service
 from service.pdf.index_progress import EVENT_TO_STEP, get_index_progress_tracker
 from service.pdf.index_queue import get_document_index_queue
@@ -21,6 +22,19 @@ router = APIRouter()
 _PATH_FIELD_PATTERN = re.compile(
     r'(?P<prefix>"(?P<key>pdf_path|doc_source)"\s*:\s*")(?P<value>[^"]*)(?P<suffix>")'
 )
+
+
+@router.get("/documents/companies")
+async def list_document_companies():
+    companies = [
+        {
+            "company_id": profile.company_id,
+            "company_name": profile.company_name,
+            "aliases": list(profile.aliases),
+        }
+        for profile in get_company_registry().list_profiles()
+    ]
+    return {"companies": companies}
 
 
 def _step_label(key: str) -> str:
@@ -257,6 +271,8 @@ async def _run_upload_index_task(
     collection_name: str,
     force_rebuild: bool,
     doc_source: str,
+    company_id: str,
+    year: int,
 ) -> None:
     tracker = get_index_progress_tracker()
     try:
@@ -274,6 +290,8 @@ async def _run_upload_index_task(
             force_rebuild=force_rebuild,
             collection_name=collection_name,
             doc_source=source,
+            company_id=company_id,
+            year=year,
             progress_callback=_progress_callback_for(task_id),
         )
         tracker.complete(
@@ -299,6 +317,8 @@ async def index_documents(request: Request):
         force_rebuild=payload.force_rebuild,
         collection_name=payload.collection_name,
         doc_source=payload.doc_source or None,
+        company_id=payload.company_id,
+        year=payload.year,
     )
     return _augment_index_result(result, uploaded=False)
 
@@ -327,6 +347,8 @@ async def start_index_documents(request: Request):
                 force_rebuild=payload.force_rebuild,
                 collection_name=collection,
                 doc_source=payload.doc_source or None,
+                company_id=payload.company_id,
+                year=payload.year,
                 progress_callback=_progress_callback_for(task_id),
             )
             tracker.complete(task_id, _augment_index_result(result, uploaded=False))
@@ -347,6 +369,8 @@ async def upload_document(
     collection_name: str = Form("default"),
     force_rebuild: bool = Form(False),
     doc_source: str = Form(""),
+    company_id: str = Form(""),
+    year: int | None = Form(None),
 ):
     target_path, original_name, size_bytes = await _save_upload_to_temp(file)
     collection = (collection_name or "default").strip() or "default"
@@ -357,6 +381,8 @@ async def upload_document(
             force_rebuild=force_rebuild,
             collection_name=collection,
             doc_source=source,
+            company_id=company_id,
+            year=year,
         )
         return _augment_index_result(
             result,
@@ -374,6 +400,8 @@ async def start_upload_document(
     collection_name: str = Form("default"),
     force_rebuild: bool = Form(False),
     doc_source: str = Form(""),
+    company_id: str = Form(""),
+    year: int | None = Form(None),
 ):
     target_path, original_name, size_bytes = await _save_upload_to_temp(file)
     collection = (collection_name or "default").strip() or "default"
@@ -398,6 +426,8 @@ async def start_upload_document(
             collection,
             force_rebuild,
             doc_source,
+            company_id,
+            year or 0,
         )
 
     await get_document_index_queue().enqueue(

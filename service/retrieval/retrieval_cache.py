@@ -13,13 +13,15 @@ class RetrievalCacheKey:
     question_hash: str
     query_type: str
     top_k: int
+    filter_hash: str = ""
 
     def as_storage_key(self) -> str:
-        return "retrieval:{collection}:{question}:{query_type}:{top_k}".format(
+        return "retrieval:{collection}:{question}:{query_type}:{top_k}:{filter_hash}".format(
             collection=self.collection_name,
             question=self.question_hash,
             query_type=self.query_type,
             top_k=self.top_k,
+            filter_hash=self.filter_hash,
         )
 
 
@@ -41,12 +43,14 @@ class RetrievalResultCache:
         question_hash: str,
         query_type: str,
         top_k: int,
+        filter_hash: str = "",
     ) -> RetrievalCacheKey:
         return RetrievalCacheKey(
             collection_name=str(collection_name or "default"),
             question_hash=str(question_hash or ""),
             query_type=str(query_type or "fact_lookup"),
             top_k=max(1, int(top_k)),
+            filter_hash=str(filter_hash or ""),
         )
 
     def get(self, key: RetrievalCacheKey) -> Any | None:

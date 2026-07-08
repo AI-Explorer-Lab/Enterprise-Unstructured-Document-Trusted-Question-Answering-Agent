@@ -21,3 +21,5 @@ class DocumentIndexRequest(BaseModel):
     pdf_path: str
     force_rebuild: bool = False
     collection_name: str = "default"
+    company_id: str = ""
+    year: int | None = None

@@ -21,6 +21,37 @@ def _score_with_source(row: Dict[str, Any]) -> tuple[float, str]:
     return 0.0, ""
 
 
+def _clean(value: Any) -> str:
+    return str(value or "").strip()
+
+
+def _metadata_value(row: Mapping[str, Any], key: str) -> Any:
+    if row.get(key) not in (None, ""):
+        return row.get(key)
+    metadata = row.get("metadata") or row.get("metadata_json") or {}
+    if isinstance(metadata, Mapping):
+        return metadata.get(key)
+    return None
+
+
+def _filter_values(value: Any) -> list[str]:
+    values = value if isinstance(value, (list, tuple, set)) else [value]
+    result: list[str] = []
+    for item in values:
+        text = _clean(item)
+        if text and text not in result:
+            result.append(text)
+    return result
+
+
+def _matches_metadata_filter(row: Mapping[str, Any], metadata_filter: Mapping[str, Any]) -> bool:
+    for key in ("company_id", "year"):
+        expected = _filter_values(metadata_filter.get(key))
+        if expected and _clean(_metadata_value(row, key)) not in expected:
+            return False
+    return True
+
+
 def _confidence(rows: List[Dict[str, Any]]) -> float:
     if not rows:
         return 0.0
@@ -156,6 +187,23 @@ class EvidenceDecisionEngine:
         table_evidence_quota: int = 2,
     ) -> Dict[str, Any]:
         rows = [dict(item) for item in evidence if isinstance(item, Mapping)]
+        metadata_filter = (slots or {}).get("metadata_filter") if isinstance(slots, Mapping) else None
+        scope_mismatches: List[Dict[str, Any]] = []
+        if isinstance(metadata_filter, Mapping) and metadata_filter:
+            kept_rows: List[Dict[str, Any]] = []
+            for row in rows:
+                if _matches_metadata_filter(row, metadata_filter):
+                    kept_rows.append(row)
+                else:
+                    scope_mismatches.append(
+                        {
+                            "chunk_id": row.get("chunk_id", ""),
+                            "doc_source": row.get("doc_source", ""),
+                            "company_id": _metadata_value(row, "company_id"),
+                            "year": _metadata_value(row, "year"),
+                        }
+                    )
+            rows = kept_rows
         rule_gate = self.rule_gate.evaluate(
             rows,
             query_type=query_type,
@@ -182,6 +230,9 @@ class EvidenceDecisionEngine:
                 rerank_trace=rerank_trace,
             )
         merged = merge_audit_and_rule_gate(rule_gate, rule_audit)
+        if scope_mismatches:
+            merged["scope_mismatch_count"] = len(scope_mismatches)
+            merged["scope_mismatches"] = scope_mismatches[:10]
         merged["rule_gate"] = rule_gate
         merged["evidence_audit"] = rule_audit
         if merged.get("decision") == "retry" and not str(merged.get("suggested_retry_query") or "").strip():

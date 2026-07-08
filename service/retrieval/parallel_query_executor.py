@@ -1,8 +1,9 @@
 ﻿from __future__ import annotations
 
 import asyncio
+import json
 import time
-from typing import Any, Awaitable, Callable, Dict, Iterable, List, Sequence
+from typing import Any, Awaitable, Callable, Dict, Iterable, List, Mapping, Sequence
 
 from .pgvector_repository import PgvectorRepository, deterministic_embedding
 from .retrieval_cache import RetrievalResultCache
@@ -96,6 +97,30 @@ def default_query_expander(question: str, expand_query_num: int) -> list[str]:
     return unique[:total]
 
 
+def _normalize_metadata_filter(metadata_filter: Mapping[str, Any] | None) -> Dict[str, Any]:
+    if not metadata_filter:
+        return {}
+    normalized: Dict[str, Any] = {}
+    for key in ("company_id", "year"):
+        value = metadata_filter.get(key)
+        values = value if isinstance(value, (list, tuple, set)) else [value]
+        cleaned: list[str] = []
+        for item in values:
+            text = str(item or "").strip()
+            if text and text not in cleaned:
+                cleaned.append(text)
+        if cleaned:
+            normalized[key] = cleaned
+    return normalized
+
+
+def _metadata_filter_hash(metadata_filter: Mapping[str, Any] | None) -> str:
+    normalized = _normalize_metadata_filter(metadata_filter)
+    if not normalized:
+        return ""
+    return stable_sha256(json.dumps(normalized, ensure_ascii=False, sort_keys=True))
+
+
 class ParallelQueryExecutor:
     def __init__(
         self,
@@ -124,6 +149,7 @@ class ParallelQueryExecutor:
         expand_query_num: int,
         enable_cache: bool = True,
         expanded_queries: Sequence[str] | None = None,
+        metadata_filter: Mapping[str, Any] | None = None,
     ) -> Dict[str, Any]:
         effective_top_k = max(1, int(top_k))
         query_text = str(question or "").strip()
@@ -132,6 +158,8 @@ class ParallelQueryExecutor:
         repository_revision = int(getattr(self.repository, "revision", 0) or 0)
         repository_backend = str(getattr(self.repository, "backend", "unknown") or "unknown")
         repository_database_url_set = bool(getattr(self.repository, "database_url", ""))
+        normalized_filter = _normalize_metadata_filter(metadata_filter)
+        filter_hash = _metadata_filter_hash(normalized_filter)
         repository_collection_count = -1
         repository_count_error = ""
         try:
@@ -147,6 +175,7 @@ class ParallelQueryExecutor:
                 question_hash=cache_hash,
                 query_type=effective_query_type,
                 top_k=effective_top_k,
+                filter_hash=filter_hash,
             )
             if enable_cache:
                 cached = self.retrieval_cache.get(cache_key)
@@ -181,6 +210,7 @@ class ParallelQueryExecutor:
                         collection_name=collection_name,
                         top_k=stage_top_n,
                         semaphore=semaphore,
+                        metadata_filter=normalized_filter,
                     )
                 )
             )
@@ -197,6 +227,7 @@ class ParallelQueryExecutor:
                         collection_name=collection_name,
                         top_k=stage_top_n,
                         semaphore=semaphore,
+                        metadata_filter=normalized_filter,
                     )
                 )
             )
@@ -209,6 +240,7 @@ class ParallelQueryExecutor:
                         collection_name=collection_name,
                         top_k=max(effective_top_k * 3, effective_top_k),
                         semaphore=semaphore,
+                        metadata_filter=normalized_filter,
                     )
                 )
             )
@@ -233,6 +265,8 @@ class ParallelQueryExecutor:
             "repository_collection_count": repository_collection_count,
             "repository_count_error": repository_count_error,
             "query_variants": query_variants,
+            "metadata_filter": normalized_filter,
+            "filter_hash": filter_hash,
             "task_count": len(raw_task_results),
             "max_concurrency": self.max_concurrency,
             "query_timeout_seconds": self.query_timeout_seconds,
@@ -270,12 +304,15 @@ class ParallelQueryExecutor:
         collection_name: str,
         top_k: int,
         query_type: str,
+        metadata_filter: Mapping[str, Any] | None = None,
     ) -> Dict[str, Any] | None:
         if self.retrieval_cache is None:
             return None
 
         query_text = str(question or "").strip()
         question_hash = stable_sha256(query_text)
+        normalized_filter = _normalize_metadata_filter(metadata_filter)
+        filter_hash = _metadata_filter_hash(normalized_filter)
         repository_revision = int(getattr(self.repository, "revision", 0) or 0)
         try:
             repository_collection_count = int(await self.repository.count_collection_chunks(collection_name))
@@ -287,6 +324,7 @@ class ParallelQueryExecutor:
             question_hash=cache_hash,
             query_type=str(query_type or "fact_lookup"),
             top_k=max(1, int(top_k)),
+            filter_hash=filter_hash,
         )
         cached = self.retrieval_cache.get(cache_key)
         if cached is None:
@@ -340,6 +378,7 @@ class ParallelQueryExecutor:
         collection_name: str,
         top_k: int,
         semaphore: asyncio.Semaphore,
+        metadata_filter: Mapping[str, Any] | None = None,
     ) -> Dict[str, Any]:
         started = time.perf_counter()
         items: list[Dict[str, Any]] = []
@@ -354,6 +393,7 @@ class ParallelQueryExecutor:
                         query,
                         collection_name,
                         top_k,
+                        metadata_filter,
                     ),
                     timeout=self.query_timeout_seconds,
                 )
@@ -382,6 +422,7 @@ class ParallelQueryExecutor:
         collection_name: str,
         top_k: int,
         semaphore: asyncio.Semaphore,
+        metadata_filter: Mapping[str, Any] | None = None,
     ) -> list[Dict[str, Any]]:
         started = time.perf_counter()
         result_map: Dict[str, list[Dict[str, Any]]] = {}
@@ -396,6 +437,7 @@ class ParallelQueryExecutor:
                         queries=queries,
                         collection_name=collection_name,
                         top_k=top_k,
+                        metadata_filter=metadata_filter,
                     ),
                     timeout=self.query_timeout_seconds,
                 )
@@ -430,6 +472,7 @@ class ParallelQueryExecutor:
         queries: Sequence[str],
         collection_name: str,
         top_k: int,
+        metadata_filter: Mapping[str, Any] | None = None,
     ) -> Dict[str, list[Dict[str, Any]]]:
         if route == "table":
             raw = await self.repository.keyword_search_many(
@@ -438,6 +481,7 @@ class ParallelQueryExecutor:
                 top_k=top_k,
                 chunk_type="table",
                 table_only=True,
+                metadata_filter=metadata_filter,
             )
         else:
             raw = await self.repository.keyword_search_many(
@@ -446,6 +490,7 @@ class ParallelQueryExecutor:
                 top_k=top_k,
                 chunk_type=None,
                 table_only=False,
+                metadata_filter=metadata_filter,
             )
         return {
             query: [self._normalize_route_item(row, route, collection_name) for row in rows]
@@ -458,6 +503,7 @@ class ParallelQueryExecutor:
         query: str,
         collection_name: str,
         top_k: int,
+        metadata_filter: Mapping[str, Any] | None = None,
     ) -> list[Dict[str, Any]]:
         if route == "dense" and self.async_embedding_builder is not None:
             embedding = await self.async_embedding_builder(query)
@@ -467,6 +513,7 @@ class ParallelQueryExecutor:
                 query_text=query,
                 top_k=top_k,
                 chunk_type=None,
+                metadata_filter=metadata_filter,
             )
             return [self._normalize_route_item(row, route, collection_name) for row in rows]
         return await self._execute_route(
@@ -474,6 +521,7 @@ class ParallelQueryExecutor:
             query=query,
             collection_name=collection_name,
             top_k=top_k,
+            metadata_filter=metadata_filter,
         )
 
     async def _execute_route(
@@ -482,6 +530,7 @@ class ParallelQueryExecutor:
         query: str,
         collection_name: str,
         top_k: int,
+        metadata_filter: Mapping[str, Any] | None = None,
     ) -> list[Dict[str, Any]]:
         if route == "dense":
             embedding = self.embedding_builder(query, self.repository.embedding_dim)
@@ -491,6 +540,7 @@ class ParallelQueryExecutor:
                 query_text=query,
                 top_k=top_k,
                 chunk_type=None,
+                metadata_filter=metadata_filter,
             )
             return [self._normalize_route_item(row, route, collection_name) for row in rows]
 
@@ -499,6 +549,7 @@ class ParallelQueryExecutor:
                 collection_name=collection_name,
                 query_text=query,
                 top_k=top_k,
+                metadata_filter=metadata_filter,
             )
             return [self._normalize_route_item(row, route, collection_name) for row in rows]
 
@@ -508,6 +559,7 @@ class ParallelQueryExecutor:
             top_k=top_k,
             chunk_type=None,
             table_only=False,
+            metadata_filter=metadata_filter,
         )
         return [self._normalize_route_item(row, route, collection_name) for row in rows]
 

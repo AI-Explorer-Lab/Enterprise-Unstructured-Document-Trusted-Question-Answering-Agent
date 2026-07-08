@@ -15,8 +15,10 @@ from service.agent.clarify_gate import build_clarify_question
 from service.agent.conversation_context import ConversationContextService
 from service.agent.controlled_agents import IntentUnderstandingAgent, QuestionUnderstandingAgent, SlotFillingAgent
 from service.agent.evidence_gate import EvidenceDecisionEngine
+from service.agent.company_registry import get_company_registry
 from service.agent.query_expander import FIXED_QUERY_VARIANT_TOTAL, expand_queries
 from service.agent.query_planner import build_query_plan, is_decomposed_plan
+from service.agent.retrieval_scope import RetrievalScope, resolve_retrieval_scope
 from service.agent.skill_registry import DEFAULT_SKILL_REGISTRY
 from service.embedding.embedding_service import EmbeddingService, build_embedding_provider_from_config
 from service.evaluation.ragas_evaluator import evaluate_qa_result
@@ -216,6 +218,7 @@ class TrustedQAWorkflow:
         self.skill_registry = DEFAULT_SKILL_REGISTRY
         self.llm_service = get_llm_service()
         self.conversation_context = ConversationContextService(self.llm_service)
+        self.company_registry = get_company_registry()
         self.intent_agent = IntentUnderstandingAgent(self.llm_service)
         self.slot_agent = SlotFillingAgent(self.llm_service)
         self.understanding_agent = QuestionUnderstandingAgent(self.llm_service)
@@ -380,6 +383,7 @@ class TrustedQAWorkflow:
         query_type: str,
         top_k: int,
         expand_query_num: int,
+        metadata_filter: Mapping[str, Any] | None = None,
     ) -> str:
         repository = getattr(getattr(self.retriever, "parallel_executor", None), "repository", None)
         repository_revision = int(getattr(repository, "revision", 0) or 0)
@@ -398,6 +402,7 @@ class TrustedQAWorkflow:
             "model": str(getattr(self.llm_service, "model", "")),
             "repository_revision": repository_revision,
             "repository_collection_count": repository_collection_count,
+            "metadata_filter": dict(metadata_filter or {}),
         }
         raw = json.dumps(payload, ensure_ascii=False, sort_keys=True, default=str)
         return hashlib.sha256(raw.encode("utf-8")).hexdigest()
@@ -452,6 +457,58 @@ class TrustedQAWorkflow:
         planned_intent["planning_mode"] = "decomposed"
         planned_intent["query_plan"] = plan
         return plan, planned_query_type, planned_slots, planned_intent
+
+    async def _resolve_retrieval_scope(
+        self,
+        question: str,
+        collection_name: str,
+        query_type: str,
+        slots: Dict[str, Any],
+        conversation_state: Mapping[str, Any] | None,
+    ) -> RetrievalScope:
+        repository = getattr(getattr(self.retriever, "parallel_executor", None), "repository", None)
+        document_scopes: List[Dict[str, Any]] = []
+        list_scopes = getattr(repository, "list_document_scopes", None)
+        if callable(list_scopes):
+            try:
+                document_scopes = list(await list_scopes(collection_name))
+            except Exception:
+                document_scopes = []
+        focus = (conversation_state or {}).get("conversation_focus") if isinstance(conversation_state, Mapping) else None
+        scope = resolve_retrieval_scope(
+            question=question,
+            query_type=query_type,
+            slots=slots,
+            conversation_focus=focus if isinstance(focus, Mapping) else None,
+            document_scopes=document_scopes,
+            company_registry=self.company_registry,
+        )
+        if scope.company_id:
+            slots["company_id"] = scope.company_id
+        if scope.company_name:
+            slots["company"] = scope.company_name
+        if scope.years:
+            slots["years"] = [str(year) for year in scope.years]
+            slots["period"] = str(scope.years[0]) if len(scope.years) == 1 else "、".join(str(year) for year in scope.years)
+        slots["retrieval_scope"] = scope.as_dict()
+        slots["metadata_filter"] = scope.metadata_filter()
+        return scope
+
+    @staticmethod
+    def _apply_scope_clarify(clarify: Dict[str, Any], scope: RetrievalScope, slots: Dict[str, Any]) -> Dict[str, Any]:
+        if not scope.should_clarify:
+            return clarify
+        payload = dict(clarify or {})
+        missing = list(payload.get("missing_slots") or [])
+        for item in scope.missing_slots:
+            if item not in missing:
+                missing.append(item)
+        payload["decision"] = "clarify"
+        payload["missing_slots"] = missing
+        payload["clarify_question"] = scope.clarify_question or payload.get("clarify_question") or "请补充公司和财报年份后再查询。"
+        payload["slots"] = slots
+        payload["retrieval_scope"] = scope.as_dict()
+        return payload
 
     @staticmethod
     def _annotate_subtask_evidence(
@@ -526,6 +583,7 @@ class TrustedQAWorkflow:
         top_k: int,
         expand_query_num: int,
         enable_cache: bool,
+        metadata_filter: Mapping[str, Any] | None = None,
     ) -> tuple[Dict[str, Any], List[str], List[str] | None, bool, Dict[str, Any]]:
         started = time.perf_counter()
         subtasks = [
@@ -555,6 +613,7 @@ class TrustedQAWorkflow:
                     expand_query_num=expand_query_num,
                     enable_cache=enable_cache,
                     expanded_queries=expanded,
+                    metadata_filter=metadata_filter,
                 )
                 evidence = self._annotate_subtask_evidence(list(retrieval_result.get("evidence") or []), subtask)
                 return {
@@ -590,6 +649,7 @@ class TrustedQAWorkflow:
             "query_type": str(plan.get("query_type") or "fact_lookup"),
             "planning_mode": "decomposed",
             "query_plan": plan,
+            "metadata_filter": dict(metadata_filter or {}),
             "subtask_count": len(subtask_results),
             "configured_max_subtasks": self.query_plan_max_subtasks,
             "max_concurrent_subtasks": max_concurrent_subtasks,
@@ -663,6 +723,7 @@ class TrustedQAWorkflow:
         query_type: str,
         expand_query_num: int,
         enable_cache: bool,
+        metadata_filter: Mapping[str, Any] | None = None,
     ) -> tuple[Dict[str, Any], List[str], List[str] | None, bool, Dict[str, Any]]:
         started = time.perf_counter()
         effective_top_k = max(1, int(top_k))
@@ -675,6 +736,7 @@ class TrustedQAWorkflow:
                 top_k=effective_top_k,
                 expand_query_num=effective_expand_num,
                 enable_cache=enable_cache,
+                metadata_filter=metadata_filter,
             )
         cache_precheck_hit = False
         query_expansion_cache_hit = False
@@ -689,6 +751,7 @@ class TrustedQAWorkflow:
                 collection_name=collection_name,
                 top_k=effective_top_k,
                 query_type=query_type,
+                metadata_filter=metadata_filter,
             )
 
         if cached_stage1 is not None:
@@ -724,6 +787,7 @@ class TrustedQAWorkflow:
             expand_query_num=effective_expand_num,
             enable_cache=enable_cache,
             expanded_queries=expanded,
+            metadata_filter=metadata_filter,
         )
         trace = retrieval_result.setdefault("retrieval_trace", {})
         trace["query_expansion_skipped"] = "retrieval_cache_hit" if cache_precheck_hit else ("query_expansion_cache_hit" if query_expansion_cache_hit else "")
@@ -916,7 +980,15 @@ class TrustedQAWorkflow:
         collection_name = str(state.get("collection_name") or "default")
         slots = dict(state.get("slots") or {})
         selected_skill = state.get("selected_skill")
+        scope = await self._resolve_retrieval_scope(
+            question=str(state.get("effective_question") or state.get("question") or ""),
+            collection_name=collection_name,
+            query_type=query_type,
+            slots=slots,
+            conversation_state=state.get("conversation_state") or {},
+        )
         clarify = self._build_clarify_payload(query_type, collection_name, slots, selected_skill)
+        clarify = self._apply_scope_clarify(clarify, scope, slots)
         observations = list(state.get("observations") or [])
         observations.append(
             {
@@ -924,6 +996,7 @@ class TrustedQAWorkflow:
                 "slots": slots,
                 "missing_slots": clarify.get("missing_slots") or [],
                 "decision": clarify.get("decision") or "answer",
+                "retrieval_scope": scope.as_dict(),
                 "duration_ms": _duration_ms(started_at),
             }
         )
@@ -932,6 +1005,9 @@ class TrustedQAWorkflow:
             {
                 "missing_slots": list(clarify.get("missing_slots") or []),
                 "clarify": clarify,
+                "slots": slots,
+                "retrieval_scope": scope.as_dict(),
+                "metadata_filter": scope.metadata_filter(),
                 "observations": observations,
             }
         )
@@ -975,6 +1051,7 @@ class TrustedQAWorkflow:
             query_type=query_type,
             expand_query_num=expand_query_num,
             enable_cache=bool(state.get("enable_cache", True)),
+            metadata_filter=state.get("metadata_filter") or {},
         )
         evidence = list(retrieval_result.get("evidence") or [])
         observations = list(state.get("observations") or [])
@@ -1037,6 +1114,7 @@ class TrustedQAWorkflow:
             expand_query_num=expand_query_num,
             enable_cache=False,
             expanded_queries=retry_expanded,
+            metadata_filter=state.get("metadata_filter") or {},
         )
         evidence = list(retry_result.get("evidence") or state.get("evidence") or [])
         gate = await self.evidence_decision.evaluate(
@@ -1349,7 +1427,16 @@ class TrustedQAWorkflow:
 
         clarify_started_at = time.perf_counter()
         await _emit_progress_marker(progress_callback, "clarify_gate")
+        retrieval_scope = await self._resolve_retrieval_scope(
+            question=effective_question,
+            collection_name=collection_name,
+            query_type=query_type,
+            slots=slots,
+            conversation_state=conversation_state,
+        )
+        metadata_filter = retrieval_scope.metadata_filter()
         clarify = self._build_clarify_payload(query_type, collection_name, slots, selected_skill)
+        clarify = self._apply_scope_clarify(clarify, retrieval_scope, slots)
         clarify_duration_ms = _duration_ms(clarify_started_at)
         observations.append(
             {
@@ -1357,6 +1444,7 @@ class TrustedQAWorkflow:
                 "slots": slots,
                 "missing_slots": clarify.get("missing_slots") or [],
                 "decision": clarify.get("decision") or "answer",
+                "retrieval_scope": retrieval_scope.as_dict(),
                 "duration_ms": clarify_duration_ms,
             }
         )
@@ -1419,6 +1507,7 @@ class TrustedQAWorkflow:
             query_type,
             max(1, int(top_k)),
             max(1, int(expand_query_num)),
+            metadata_filter=metadata_filter,
         )
         cached_response = self._get_cached_response(response_cache_key) if enable_cache else None
         if cached_response is not None:
@@ -1497,6 +1586,7 @@ class TrustedQAWorkflow:
             query_type=query_type,
             expand_query_num=max(1, int(expand_query_num)),
             enable_cache=enable_cache,
+            metadata_filter=metadata_filter,
         )
         evidence = list(retrieval_result.get("evidence") or [])
         retrieval_observation = {**retrieval_stage, "evidence_count": len(evidence)}
@@ -1539,6 +1629,7 @@ class TrustedQAWorkflow:
                 expand_query_num=max(1, int(expand_query_num)),
                 enable_cache=False,
                 expanded_queries=retry_expanded,
+                metadata_filter=metadata_filter,
             )
             evidence = list(retry_result.get("evidence") or evidence)
             retrieval_result = retry_result
@@ -1752,6 +1843,10 @@ class TrustedQAWorkflow:
         response["retrieval_trace"]["skill_package"] = skill_package
         response["retrieval_trace"]["intent_trace"] = intent_trace
         response["retrieval_trace"]["slots"] = slots
+        if isinstance(slots.get("retrieval_scope"), dict):
+            response["retrieval_trace"]["retrieval_scope"] = slots.get("retrieval_scope")
+        if isinstance(slots.get("metadata_filter"), dict):
+            response["retrieval_trace"]["metadata_filter"] = slots.get("metadata_filter")
         if gate:
             response["skill_trace"]["evidence_audit"] = gate.get("evidence_audit", {})
             response["retrieval_trace"]["evidence_audit"] = gate.get("evidence_audit", {})

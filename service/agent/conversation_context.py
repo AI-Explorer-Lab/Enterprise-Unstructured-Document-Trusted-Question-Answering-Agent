@@ -145,6 +145,7 @@ def _last_completed_focus(turns: Sequence[Mapping[str, Any]]) -> Dict[str, Any] 
             slots = {}
         focus = {
             "active_topic": turn.get("effective_question") or turn.get("user_question") or "",
+            "company_id": slots.get("company_id") or "",
             "company": slots.get("company") or slots.get("entity") or "",
             "period": slots.get("period") or "",
             "years": slots.get("years") or [],
@@ -442,7 +443,7 @@ class ConversationContextService:
         normalized_slots = extract_slots(effective_question, query_type)
         merged_slots = dict(normalized_slots)
         merged_slots.update({key: value for key, value in dict(slots or {}).items() if value not in ("", [], None)})
-        for key in ("company", "entity", "period", "years", "metric", "scope", "table_name", "unit", "focus"):
+        for key in ("company_id", "company", "entity", "period", "years", "metric", "scope", "table_name", "unit", "focus", "retrieval_scope", "metadata_filter"):
             value = merged_slots.get(key)
             if value not in ("", [], None):
                 focus[key] = value
