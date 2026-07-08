@@ -103,6 +103,10 @@ class RetrievalScope:
     should_clarify: bool = False
     missing_slots: List[str] = field(default_factory=list)
     clarify_question: str = ""
+    should_refuse: bool = False
+    refuse_reason: str = ""
+    refuse_message: str = ""
+    unavailable_years: List[int] = field(default_factory=list)
     available_companies: List[Dict[str, Any]] = field(default_factory=list)
     available_years: List[int] = field(default_factory=list)
 
@@ -124,6 +128,10 @@ class RetrievalScope:
             "should_clarify": self.should_clarify,
             "missing_slots": list(self.missing_slots),
             "clarify_question": self.clarify_question,
+            "should_refuse": self.should_refuse,
+            "refuse_reason": self.refuse_reason,
+            "refuse_message": self.refuse_message,
+            "unavailable_years": list(self.unavailable_years),
             "available_companies": list(self.available_companies),
             "available_years": list(self.available_years),
             "metadata_filter": self.metadata_filter(),
@@ -183,6 +191,19 @@ def resolve_retrieval_scope(
         years = available_years[-limit:] if limit else available_years
         source_parts.append("trend_request")
 
+    unavailable_years: List[int] = []
+    refuse_message = ""
+    if company_id and explicit_years and available_years:
+        unavailable_years = [year for year in explicit_years if year not in available_years]
+        if unavailable_years:
+            available_hint = "、".join(str(year) for year in available_years)
+            requested_hint = "、".join(str(year) for year in unavailable_years)
+            company_hint = company.company_name if company else "该公司"
+            refuse_message = (
+                f"当前文档集中{company_hint}可用财报年份为 {available_hint}，"
+                f"未找到 {requested_hint} 年报；不能使用其他年份的数据替代回答。"
+            )
+
     missing: List[str] = []
     if len(companies) > 1 and not company_id:
         missing.append("company")
@@ -216,6 +237,10 @@ def resolve_retrieval_scope(
         should_clarify=bool(missing),
         missing_slots=missing,
         clarify_question=clarify,
+        should_refuse=bool(unavailable_years) and not missing,
+        refuse_reason="unavailable_year" if unavailable_years and not missing else "",
+        refuse_message=refuse_message if unavailable_years and not missing else "",
+        unavailable_years=unavailable_years if not missing else [],
         available_companies=company_options,
         available_years=available_years,
     )

@@ -1,5 +1,6 @@
 ﻿from __future__ import annotations
 
+import re
 from typing import Any, Dict, List, Mapping, Sequence
 
 from service.agent.controlled_agents import EvidenceAuditAgent, merge_audit_and_rule_gate
@@ -50,6 +51,47 @@ def _matches_metadata_filter(row: Mapping[str, Any], metadata_filter: Mapping[st
         if expected and _clean(_metadata_value(row, key)) not in expected:
             return False
     return True
+
+
+def _years_from_value(value: Any) -> List[int]:
+    values = value if isinstance(value, (list, tuple, set)) else [value]
+    years: List[int] = []
+    for item in values:
+        for match in re.findall(r"(?:19|20)\d{2}", str(item or "")):
+            year = int(match)
+            if year not in years:
+                years.append(year)
+    return years
+
+
+def _requested_years(slots: Mapping[str, Any]) -> List[int]:
+    scope = slots.get("retrieval_scope")
+    if isinstance(scope, Mapping):
+        years = _years_from_value(scope.get("years"))
+        if years:
+            return years
+    metadata_filter = slots.get("metadata_filter")
+    if isinstance(metadata_filter, Mapping):
+        years = _years_from_value(metadata_filter.get("year"))
+        if years:
+            return years
+    return _years_from_value(slots.get("years"))
+
+
+def _evidence_years(rows: Sequence[Mapping[str, Any]]) -> List[int]:
+    years: List[int] = []
+    for row in rows:
+        for year in _years_from_value(_metadata_value(row, "year")):
+            if year not in years:
+                years.append(year)
+    return years
+
+
+def _retry_filter_for_years(slots: Mapping[str, Any], years: Sequence[int]) -> Dict[str, Any]:
+    metadata_filter = slots.get("metadata_filter")
+    retry_filter = dict(metadata_filter or {}) if isinstance(metadata_filter, Mapping) else {}
+    retry_filter["year"] = list(years)
+    return retry_filter
 
 
 def _confidence(rows: List[Dict[str, Any]]) -> float:
@@ -142,6 +184,30 @@ class EvidenceGate:
 
         if query_type == "multi_doc_compare" and len(docs) < 2:
             diagnostics["coverage_warnings"].append("multi_doc_evidence_missing")
+
+        requested_years = _requested_years(slots)
+        if len(requested_years) > 1 and query_type in {"table_qa", "fact_lookup", "multi_doc_compare", "summarization", "report_generation"}:
+            evidence_years = _evidence_years(rows)
+            missing_years = [year for year in requested_years if year not in evidence_years]
+            diagnostics["requested_years"] = requested_years
+            diagnostics["evidence_years"] = evidence_years
+            diagnostics["missing_years"] = missing_years
+            if missing_years:
+                diagnostics["coverage_warnings"].append("missing_year_evidence")
+                decision = "retry" if retry_count < self.retry_limit else "refuse"
+                reason = "missing_year_evidence" if decision == "retry" else "missing_year_evidence_after_retry"
+                missing_hint = "、".join(str(year) for year in missing_years)
+                retry_terms = " ".join(str(item or "").strip() for item in [slots.get("company"), slots.get("metric")] if str(item or "").strip())
+                return {
+                    "decision": decision,
+                    "reason": reason,
+                    **diagnostics,
+                    "confidence": _confidence(rows),
+                    "missing_years": missing_years,
+                    "message": f"检索到的证据未覆盖问题要求的全部年份，缺少 {missing_hint} 年的相关证据，无法可靠完成多年份回答。",
+                    "suggested_retry_query": f"{missing_hint} 年度 {retry_terms}".strip(),
+                    "retry_metadata_filter": _retry_filter_for_years(slots, missing_years),
+                }
 
         coverage_sensitive_types = {"summarization", "report_generation", "multi_doc_compare"}
         if query_type in coverage_sensitive_types and len(rows) < self.evidence_min_docs:

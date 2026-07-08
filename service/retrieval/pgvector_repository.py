@@ -362,6 +362,34 @@ class PgvectorRepository:
             return len(self._local_chunks)
         return len([row for row in self._local_chunks if str(row.get("collection_name") or "") == collection])
 
+    async def list_collections(self) -> list[str]:
+        if self.backend == "pgvector":
+            await self._ensure_schema_ready()
+            sql = text(
+                """
+                SELECT collection_name
+                FROM pdf_chunks
+                WHERE collection_name IS NOT NULL AND collection_name <> ''
+                GROUP BY collection_name
+                HAVING COUNT(*) > 0
+                ORDER BY collection_name ASC
+                """
+            )
+            async with get_async_session(backend="pgvector", database_url=self.database_url) as session:
+                records = (await session.execute(sql)).mappings()
+                return [
+                    collection
+                    for record in records
+                    if (collection := _clean_text(record.get("collection_name")))
+                ]
+
+        collections = {
+            _clean_text(row.get("collection_name"))
+            for row in self._local_chunks
+            if _clean_text(row.get("collection_name"))
+        }
+        return sorted(collections)
+
     async def list_document_scopes(self, collection_name: str = "") -> list[Dict[str, Any]]:
         collection = _clean_text(collection_name)
         if self.backend == "pgvector":

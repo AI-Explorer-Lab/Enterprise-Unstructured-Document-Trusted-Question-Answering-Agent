@@ -4,7 +4,7 @@ import json
 import os
 import re
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Type
+from typing import Any, Dict, List, Mapping, Optional, Type
 
 import httpx
 
@@ -211,6 +211,54 @@ def _extract_response_text(response: Any) -> str:
             if isinstance(text, str) and text.strip():
                 chunks.append(text.strip())
     return "\n".join(chunks).strip()
+
+
+def _scope_years(scope: Optional[Mapping[str, Any]]) -> List[int]:
+    if not isinstance(scope, Mapping):
+        return []
+    raw_years = scope.get("years")
+    metadata_filter = scope.get("metadata_filter")
+    if not raw_years and isinstance(metadata_filter, Mapping):
+        raw_years = metadata_filter.get("year")
+    values = raw_years if isinstance(raw_years, (list, tuple, set)) else [raw_years]
+    years: List[int] = []
+    for item in values:
+        for match in re.findall(r"(?:19|20)\d{2}", str(item or "")):
+            year = int(match)
+            if year not in years:
+                years.append(year)
+    return years
+
+
+def _grounded_answer_scope_contract(scope: Optional[Mapping[str, Any]]) -> str:
+    if not isinstance(scope, Mapping):
+        return ""
+    lines: List[str] = []
+    company = str(scope.get("company_name") or scope.get("company_id") or "").strip()
+    if company:
+        lines.append(f"- Target company: {company}.")
+    years = _scope_years(scope)
+    if years:
+        allowed = ", ".join(str(year) for year in years)
+        lines.append(f"- Allowed target years: {allowed}. Answer only for these target years.")
+        lines.append(
+            "- If evidence tables contain other historical columns, treat them as non-target context; do not use them as the answer years."
+        )
+        lines.append("- The evidence metadata year is the annual-report year and has priority when interpreting relative phrases like recent years.")
+    unavailable = _scope_years({"years": scope.get("unavailable_years")})
+    if unavailable:
+        lines.append(f"- Unavailable requested years: {', '.join(str(year) for year in unavailable)}. Do not substitute other years.")
+    if not lines:
+        return ""
+    return "Resolved retrieval scope:\n" + "\n".join(lines) + "\n"
+
+
+def _answer_violates_scope_years(answer: str, scope: Optional[Mapping[str, Any]]) -> bool:
+    allowed = set(_scope_years(scope))
+    if not allowed:
+        return False
+    mentioned = {int(match) for match in re.findall(r"(?:19|20)\d{2}", str(answer or ""))}
+    return bool(mentioned - allowed)
 
 
 class LLMService:
@@ -707,6 +755,7 @@ class LLMService:
         query_type: str,
         evidence: List[Dict[str, Any]],
         citations: List[Dict[str, Any]],
+        scope: Optional[Mapping[str, Any]] = None,
     ) -> Optional[str]:
         if not (self.is_available or self.langchain_available) or not evidence:
             self._client_instance()
@@ -714,13 +763,17 @@ class LLMService:
         evidence_lines = []
         for index, item in enumerate(evidence, start=1):
             citation_id = citations[index - 1].get("citation_id", f"C{index}") if index - 1 < len(citations) else f"C{index}"
+            metadata = item.get("metadata", {}) if isinstance(item.get("metadata"), dict) else {}
             evidence_lines.append(
-                f"[{citation_id}] doc={item.get('doc_source')} page={item.get('metadata', {}).get('page_idx')} "
-                f"heading={item.get('metadata', {}).get('heading_path')} content={item.get('content')}"
+                f"[{citation_id}] doc={item.get('doc_source')} page={metadata.get('page_idx')} "
+                f"company_id={metadata.get('company_id')} year={metadata.get('year')} "
+                f"heading={metadata.get('heading_path')} content={item.get('content')}"
             )
+        scope_contract = _grounded_answer_scope_contract(scope)
         system_prompt = (
             "You are a trusted PDF QA agent. Answer only from the provided evidence. "
             "Every key claim must cite citation ids like [C1]. If evidence is insufficient, say so. "
+            "Follow the resolved retrieval scope exactly. "
             "For table QA, include metric, value, unit, period and source when present. "
             "For financial table questions, inspect every provided table evidence item before deciding that a value is absent. "
             "Align metric names, row labels, column periods, units, and totals exactly; if one evidence item contains the requested row or total, use it even when other evidence items are less relevant. "
@@ -734,6 +787,7 @@ class LLMService:
         user_prompt = (
             f"Question: {question}\n"
             f"Query type: {query_type}\n"
+            f"{scope_contract}"
             "Evidence:\n" + "\n".join(evidence_lines) + "\n"
             "Write the final answer in Chinese. Do not simply list evidence snippets; synthesize them into the requested structure."
         )
@@ -744,7 +798,22 @@ class LLMService:
         )
         if not answer or not answer.strip():
             return None
-        return answer.strip()
+        cleaned = answer.strip()
+        if _answer_violates_scope_years(cleaned, scope):
+            retry_prompt = (
+                user_prompt
+                + "\nThe previous draft used years outside the resolved scope. Rewrite the answer using only the allowed target years. "
+                "If a requested allowed year is missing from evidence, state that specific missing year instead of using an out-of-scope year."
+            )
+            retry_answer = await self.complete(
+                system_prompt,
+                retry_prompt,
+                max_tokens=self._grounded_answer_max_tokens(query_type),
+            )
+            if retry_answer and retry_answer.strip() and not _answer_violates_scope_years(retry_answer.strip(), scope):
+                return retry_answer.strip()
+            return None
+        return cleaned
 
 
 _DEFAULT_LLM_SERVICE: LLMService | None = None

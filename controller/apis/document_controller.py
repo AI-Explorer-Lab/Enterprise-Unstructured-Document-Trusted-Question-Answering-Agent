@@ -17,6 +17,7 @@ from service.agent.company_registry import get_company_registry
 from service.pdf.document_indexer import get_document_indexing_service
 from service.pdf.index_progress import EVENT_TO_STEP, get_index_progress_tracker
 from service.pdf.index_queue import get_document_index_queue
+from service.retrieval.runtime import get_runtime_repository
 
 router = APIRouter()
 _PATH_FIELD_PATTERN = re.compile(
@@ -35,6 +36,12 @@ async def list_document_companies():
         for profile in get_company_registry().list_profiles()
     ]
     return {"companies": companies}
+
+
+@router.get("/documents/collections")
+async def list_document_collections():
+    collections = await get_runtime_repository().list_collections()
+    return {"collections": collections}
 
 
 def _step_label(key: str) -> str:
