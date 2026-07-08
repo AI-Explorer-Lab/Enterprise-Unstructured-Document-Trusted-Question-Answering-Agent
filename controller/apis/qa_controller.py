@@ -14,10 +14,18 @@ from exceptions import CollectionIndexingException, CollectionNotFoundException,
 from service.agent.trusted_qa_workflow import get_trusted_qa_workflow
 from service.pdf.index_queue import get_document_index_queue
 from service.retrieval.runtime import get_runtime_repository
+from service.session.session_service import get_session_service
 
 router = APIRouter()
 STREAM_WAITING_MESSAGE = "正在生成答案，请稍等......"
 
+def _consume_background_task_result(task: asyncio.Task) -> None:
+    try:
+        task.result()
+    except asyncio.CancelledError:
+        pass
+    except Exception:
+        pass
 
 def _source_name(doc_source: Any) -> str:
     source = str(doc_source or "").strip()
@@ -27,7 +35,6 @@ def _source_name(doc_source: Any) -> str:
         return Path(source).name or source
     except Exception:
         return source.rsplit("\\", 1)[-1].rsplit("/", 1)[-1]
-
 
 def _compact_citation(item: dict[str, Any]) -> dict[str, Any]:
     return {
@@ -41,7 +48,6 @@ def _compact_citation(item: dict[str, Any]) -> dict[str, Any]:
         "quote": item.get("quote", ""),
         "confidence": item.get("confidence", 0),
     }
-
 
 def _compact_qa_response(response: dict[str, Any]) -> dict[str, Any]:
     retrieval_trace = response.get("retrieval_trace") or {}
@@ -72,11 +78,9 @@ def _compact_qa_response(response: dict[str, Any]) -> dict[str, Any]:
         },
     }
 
-
 def _sse_event(event: str, data: dict[str, Any]) -> str:
     payload = json.dumps(data, ensure_ascii=False, default=str)
     return f"event: {event}\ndata: {payload}\n\n"
-
 
 def _stage_message(stage: str, status: str = "completed") -> str:
     running_messages = {
@@ -107,7 +111,6 @@ def _stage_message(stage: str, status: str = "completed") -> str:
         return running_messages.get(stage, stage or STREAM_WAITING_MESSAGE)
     return completed_messages.get(stage, stage or STREAM_WAITING_MESSAGE)
 
-
 async def _validate_qa_request(request: QARequest) -> str:
     collection_name = str(request.collection_name or "").strip()
     if not collection_name:
@@ -123,7 +126,6 @@ async def _validate_qa_request(request: QARequest) -> str:
         raise CollectionNotFoundException(collection_name)
     return collection_name
 
-
 async def _run_qa(request: QARequest, collection_name: str, progress_callback=None) -> dict[str, Any]:
     return await get_trusted_qa_workflow().ask(
         question=request.question,
@@ -136,7 +138,6 @@ async def _run_qa(request: QARequest, collection_name: str, progress_callback=No
         progress_callback=progress_callback,
     )
 
-
 @router.post("/qa/ask")
 async def ask(request: QARequest):
     collection_name = await _validate_qa_request(request)
@@ -144,7 +145,6 @@ async def ask(request: QARequest):
     if request.include_debug:
         return response
     return _compact_qa_response(response)
-
 
 @router.post("/qa/ask/stream")
 async def ask_stream(request: QARequest):
@@ -157,8 +157,35 @@ async def ask_stream(request: QARequest):
         def elapsed_ms() -> int:
             return int((time.perf_counter() - started_at) * 1000)
 
+        progress_stages: list[dict[str, Any]] = []
+
         async def progress_callback(stage: dict[str, Any]) -> None:
+
             await progress_queue.put(stage)
+
+            sid = str(stage.get("session_id") or request.session_id or "").strip()
+
+            if sid:
+
+                progress_stages.append(dict(stage))
+
+                await get_session_service().update_session_metadata(
+
+                    sid,
+
+                    {
+
+                        "pending_question": request.question,
+
+                        "pending_status": "running",
+
+                        "pending_stage": str(stage.get("stage") or stage.get("phase") or ""),
+
+                        "pending_progress_stages": progress_stages[-12:],
+
+                    },
+
+                )
 
         task = asyncio.create_task(_run_qa(request, collection_name, progress_callback=progress_callback))
         try:
@@ -183,6 +210,10 @@ async def ask_stream(request: QARequest):
                     },
                 )
             response = await task
+            await get_session_service().update_session_metadata(
+                str(response.get("session_id") or request.session_id or ""),
+                {"pending_status": "completed", "pending_stage": "finalize_response"},
+            )
             payload = response if request.include_debug else _compact_qa_response(response)
             yield _sse_event(
                 "status",
@@ -196,7 +227,8 @@ async def ask_stream(request: QARequest):
             )
             yield _sse_event("final", payload)
         except asyncio.CancelledError:
-            task.cancel()
+            if not task.done():
+                task.add_done_callback(_consume_background_task_result)
             raise
         except Exception as exc:
             yield _sse_event(

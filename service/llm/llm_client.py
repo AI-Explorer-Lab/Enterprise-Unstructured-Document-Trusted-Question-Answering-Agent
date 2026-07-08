@@ -67,6 +67,33 @@ def _safe_int(value: Any, default: int = 0) -> int:
         return default
 
 
+def _display_page(value: Any) -> str:
+    try:
+        page = int(value)
+    except Exception:
+        return "-"
+    return str(page + 1) if page >= 0 else "-"
+
+
+def _display_page_range(value: Any, fallback: Any = None) -> str:
+    raw = str(value or "").strip()
+    match = re.fullmatch(r"\[?\s*(-?\d+)\s*,?\s*(-?\d+)\s*\]?", raw)
+    if match:
+        start = _display_page(match.group(1))
+        end = _display_page(match.group(2))
+        if start != "-" and end != "-":
+            return start if start == end else f"{start}-{end}"
+
+    match = re.fullmatch(r"(-?\d+)\s*-\s*(-?\d+)", raw)
+    if match:
+        start = _display_page(match.group(1))
+        end = _display_page(match.group(2))
+        if start != "-" and end != "-":
+            return start if start == end else f"{start}-{end}"
+
+    return _display_page(fallback)
+
+
 def _extract_json_array(text: str) -> Optional[List[str]]:
     raw = (text or "").strip()
     if not raw:
@@ -764,8 +791,9 @@ class LLMService:
         for index, item in enumerate(evidence, start=1):
             citation_id = citations[index - 1].get("citation_id", f"C{index}") if index - 1 < len(citations) else f"C{index}"
             metadata = item.get("metadata", {}) if isinstance(item.get("metadata"), dict) else {}
+            display_page = _display_page_range(metadata.get("page_range"), metadata.get("page_idx"))
             evidence_lines.append(
-                f"[{citation_id}] doc={item.get('doc_source')} page={metadata.get('page_idx')} "
+                f"[{citation_id}] doc={item.get('doc_source')} page={display_page} "
                 f"company_id={metadata.get('company_id')} year={metadata.get('year')} "
                 f"heading={metadata.get('heading_path')} content={item.get('content')}"
             )

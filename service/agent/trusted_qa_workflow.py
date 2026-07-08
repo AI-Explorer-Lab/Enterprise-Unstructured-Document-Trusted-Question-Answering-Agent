@@ -179,6 +179,7 @@ def _progress_stage_from_observation(item: Dict[str, Any]) -> Dict[str, Any] | N
         "llm_answer_cache_hit": bool(item.get("llm_answer_cache_hit", False)),
         "llm_query_expansion_used": bool(item.get("llm_query_expansion_used", False)),
         "evidence_count": int(item.get("evidence_count") or 0),
+        "session_id": str(item.get("session_id") or ""),
     }
 
 

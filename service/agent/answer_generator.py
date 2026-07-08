@@ -21,6 +21,33 @@ def _safe_int(value: Any, default: int = 10**9) -> int:
         return default
 
 
+def _display_page(value: Any) -> str:
+    try:
+        page = int(value)
+    except Exception:
+        return "-"
+    return str(page + 1) if page >= 0 else "-"
+
+
+def _display_page_range(value: Any, fallback: Any = None) -> str:
+    raw = str(value or "").strip()
+    range_match = re.fullmatch(r"\[?\s*(-?\d+)\s*,?\s*(-?\d+)\s*\]?", raw)
+    if range_match:
+        start = _display_page(range_match.group(1))
+        end = _display_page(range_match.group(2))
+        if start != "-" and end != "-":
+            return start if start == end else f"{start}-{end}"
+
+    range_match = re.fullmatch(r"(-?\d+)\s*-\s*(-?\d+)", raw)
+    if range_match:
+        start = _display_page(range_match.group(1))
+        end = _display_page(range_match.group(2))
+        if start != "-" and end != "-":
+            return start if start == end else f"{start}-{end}"
+
+    return _display_page(fallback)
+
+
 def _score_value(row: Dict[str, Any]) -> float:
     for key in ("confidence_score", "final_score", "score"):
         if key not in row:
@@ -301,8 +328,9 @@ class AnswerGenerator:
         lines = ["\u8bc1\u636e\u4f4d\u7f6e\u5982\u4e0b\uff1a"]
         for item in evidence:
             meta = item.get("metadata", {})
+            page = _display_page_range(meta.get("page_range"), meta.get("page_idx"))
             lines.append(
-                f"- \u76f8\u5173\u5185\u5bb9\uff1a{_answer_text(item.get('content', ''))}\uff1b\u9875\u7801\uff1a{meta.get('page_idx')}\uff1b"
+                f"- \u76f8\u5173\u5185\u5bb9\uff1a{_answer_text(item.get('content', ''))}\uff1b\u9875\u7801\uff1a{page}\uff1b"
                 f"\u6807\u9898\u8def\u5f84\uff1a{meta.get('heading_path', '')}\uff1bchunk_id\uff1a{item.get('chunk_id')} [{self._citation_label(item)}]"
             )
         return "\n".join(lines)
