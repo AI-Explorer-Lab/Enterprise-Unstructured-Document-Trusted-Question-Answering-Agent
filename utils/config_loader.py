@@ -354,6 +354,10 @@ def _load_yaml_file(path: Path) -> dict[str, Any]:
     return _basic_yaml_load(raw_text)
 
 
+def load_yaml_file(path: str | Path) -> dict[str, Any]:
+    return _load_yaml_file(Path(path).expanduser())
+
+
 def _discover_yaml_paths(config_root: Path) -> list[Path]:
     if not config_root.exists() or not config_root.is_dir():
         return []

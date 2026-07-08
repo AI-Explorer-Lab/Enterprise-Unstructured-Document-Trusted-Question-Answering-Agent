@@ -678,6 +678,7 @@ class LLMService:
             "Return exactly 4 Chinese-friendly search queries: the original question first, "
             "then two concise noise-reduced rewrite variants, then one query_type scene-enhanced variant. "
             "Keep named entities, years, metrics, table headers and document targets. "
+            "If the question is a planned sub-question, keep the search scope within that sub-question and do not merge sibling topics back into it. "
             "Do not add page numbers unless the original question already contains them. "
             "Each item must be a complete search query, not a field name, value, unit, or answer. "
             "Output format example: [\"2025 operating revenue\", \"2025 revenue table\", \"operating revenue value unit 2025\", \"table_qa operating revenue metric 2025\"]"

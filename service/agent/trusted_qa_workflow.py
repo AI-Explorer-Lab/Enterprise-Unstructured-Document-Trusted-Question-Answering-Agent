@@ -1,12 +1,13 @@
 ﻿from __future__ import annotations
 
+import asyncio
 import hashlib
 import json
 import os
 import time
 import copy
 from contextvars import ContextVar
-from typing import Any, Awaitable, Callable, Dict, List, Optional
+from typing import Any, Awaitable, Callable, Dict, List, Mapping, Optional
 from uuid import uuid4
 
 from service.agent.answer_generator import AnswerGenerator
@@ -15,6 +16,7 @@ from service.agent.conversation_context import ConversationContextService
 from service.agent.controlled_agents import IntentUnderstandingAgent, QuestionUnderstandingAgent, SlotFillingAgent
 from service.agent.evidence_gate import EvidenceDecisionEngine
 from service.agent.query_expander import FIXED_QUERY_VARIANT_TOTAL, expand_queries
+from service.agent.query_planner import build_query_plan, is_decomposed_plan
 from service.agent.skill_registry import DEFAULT_SKILL_REGISTRY
 from service.embedding.embedding_service import EmbeddingService, build_embedding_provider_from_config
 from service.evaluation.ragas_evaluator import evaluate_qa_result
@@ -72,6 +74,37 @@ def _fixed_query_variants(question: str, query_type: str, candidates: List[str] 
         if value and value not in merged:
             merged.append(value)
     return merged
+
+
+def _chunk_key(row: Dict[str, Any]) -> str:
+    chunk_id = str(row.get("chunk_id") or "").strip()
+    if chunk_id:
+        return chunk_id
+    return f"anon:{abs(hash(str(row.get('raw_doc') or row.get('content') or '')))}"
+
+
+def _retrieval_score(row: Dict[str, Any]) -> float:
+    for key in ("confidence_score", "final_score", "score", "rank_score", "retrieval_score"):
+        try:
+            return float(row.get(key))
+        except Exception:
+            continue
+    return 0.0
+
+
+def _row_search_text(row: Dict[str, Any]) -> str:
+    return " ".join(
+        [
+            str(row.get("heading_path") or ""),
+            str(row.get("table_context_text") or ""),
+            str(row.get("table_header_text") or ""),
+            str(row.get("raw_doc") or row.get("content") or ""),
+        ]
+    )
+
+
+def _subtask_id(subtask: Mapping[str, Any]) -> str:
+    return str(subtask.get("slot") or subtask.get("subtask_id") or "").strip()
 
 
 def _usable_llm_answer(answer: Any) -> bool:
@@ -153,6 +186,32 @@ class TrustedQAWorkflow:
         reranker_cfg = self.config.get("reranker", {}) if isinstance(self.config.get("reranker"), dict) else {}
         cache_cfg = self.config.get("cache", {}) if isinstance(self.config.get("cache"), dict) else {}
         guard_cfg = self.config.get("guardrails", {}) if isinstance(self.config.get("guardrails"), dict) else {}
+        planner_cfg = self.config.get("planner", {}) if isinstance(self.config.get("planner"), dict) else {}
+        retrieval_max_concurrency = max(1, int(retrieval_cfg.get("max_concurrency", 6)))
+        self.query_plan_max_subtasks = max(
+            1,
+            int(planner_cfg.get("max_subtasks", retrieval_cfg.get("max_query_plan_subtasks", 10))),
+        )
+        self.query_plan_max_parallel_retrieval_tasks = max(
+            1,
+            int(
+                planner_cfg.get(
+                    "max_parallel_retrieval_tasks",
+                    retrieval_cfg.get("max_query_plan_parallel_retrieval_tasks", 30),
+                )
+            ),
+        )
+        default_concurrent_subtasks = max(
+            1,
+            min(
+                self.query_plan_max_subtasks,
+                self.query_plan_max_parallel_retrieval_tasks // retrieval_max_concurrency,
+            ),
+        )
+        self.query_plan_max_concurrent_subtasks = max(
+            1,
+            int(planner_cfg.get("max_concurrent_subtasks", default_concurrent_subtasks)),
+        )
         self.session_service = get_session_service()
         self.skill_registry = DEFAULT_SKILL_REGISTRY
         self.llm_service = get_llm_service()
@@ -170,7 +229,7 @@ class TrustedQAWorkflow:
                 ),
                 query_expander=_query_expander_for_executor,
                 async_embedding_builder=lambda text_value: self.embedding_service.embed_text(text_value, use_cache=True, chunk_text=False),
-                max_concurrency=int(retrieval_cfg.get("max_concurrency", 6)),
+                max_concurrency=retrieval_max_concurrency,
                 query_timeout_seconds=float(retrieval_cfg.get("query_timeout_seconds", 20)),
             ),
             reranker=TwoStageHybridReranker(
@@ -374,6 +433,228 @@ class TrustedQAWorkflow:
         expanded = _fixed_query_variants(question, query_type, llm_expanded)
         return expanded, llm_expanded, bool(llm_expanded)
 
+    def _apply_query_plan(
+        self,
+        question: str,
+        query_type: str,
+        slots: Dict[str, Any],
+        intent_trace: Dict[str, Any],
+    ) -> tuple[Dict[str, Any], str, Dict[str, Any], Dict[str, Any]]:
+        plan = build_query_plan(question, query_type)
+        if not is_decomposed_plan(plan):
+            return plan, query_type, slots, intent_trace
+
+        planned_query_type = str(plan.get("query_type") or query_type or "fact_lookup")
+        planned_slots = dict(slots or {})
+        planned_slots.update(dict(plan.get("slots") or {}))
+        planned_intent = dict(intent_trace or {})
+        planned_intent["query_type"] = planned_query_type
+        planned_intent["planning_mode"] = "decomposed"
+        planned_intent["query_plan"] = plan
+        return plan, planned_query_type, planned_slots, planned_intent
+
+    @staticmethod
+    def _annotate_subtask_evidence(
+        evidence: List[Dict[str, Any]],
+        subtask: Dict[str, Any],
+    ) -> List[Dict[str, Any]]:
+        annotated: List[Dict[str, Any]] = []
+        for item in evidence:
+            if not isinstance(item, dict):
+                continue
+            row = dict(item)
+            row["retrieval_subtask_id"] = _subtask_id(subtask)
+            row["retrieval_subtask_name"] = str(subtask.get("display_name") or "")
+            annotated.append(row)
+        return annotated
+
+    @staticmethod
+    def _merge_decomposed_evidence(subtask_results: List[Dict[str, Any]], final_top_k: int) -> List[Dict[str, Any]]:
+        limit = max(1, int(final_top_k))
+        selected: List[Dict[str, Any]] = []
+        seen: set[str] = set()
+
+        def add(row: Dict[str, Any]) -> None:
+            key = _chunk_key(row)
+            if key in seen or len(selected) >= limit:
+                return
+            selected.append(row)
+            seen.add(key)
+
+        for result in subtask_results:
+            evidence = [dict(item) for item in result.get("evidence") or [] if isinstance(item, dict)]
+            if not evidence:
+                continue
+            display_name = str((result.get("subtask") or {}).get("display_name") or "").strip()
+            match_terms = [
+                str(item or "").strip()
+                for item in list((result.get("subtask") or {}).get("match_terms") or [])
+                if str(item or "").strip()
+            ]
+            if display_name and display_name not in match_terms:
+                match_terms.append(display_name)
+            representative = None
+            for term in match_terms:
+                representative = next(
+                    (item for item in evidence if str(item.get("chunk_type") or "") == "table" and term in _row_search_text(item)),
+                    None,
+                )
+                if representative is not None:
+                    break
+            if representative is None:
+                for term in match_terms:
+                    representative = next((item for item in evidence if term in _row_search_text(item)), None)
+                    if representative is not None:
+                        break
+            table_first = next((item for item in evidence if str(item.get("chunk_type") or "") == "table"), None)
+            add(representative or table_first or evidence[0])
+
+        candidates: List[Dict[str, Any]] = []
+        for result in subtask_results:
+            candidates.extend([dict(item) for item in result.get("evidence") or [] if isinstance(item, dict)])
+        candidates.sort(key=_retrieval_score, reverse=True)
+        for item in candidates:
+            add(item)
+            if len(selected) >= limit:
+                break
+        return selected
+
+    async def _retrieve_decomposed_plan(
+        self,
+        plan: Dict[str, Any],
+        collection_name: str,
+        top_k: int,
+        expand_query_num: int,
+        enable_cache: bool,
+    ) -> tuple[Dict[str, Any], List[str], List[str] | None, bool, Dict[str, Any]]:
+        started = time.perf_counter()
+        subtasks = [
+            dict(item)
+            for item in list(plan.get("subtasks") or [])[: self.query_plan_max_subtasks]
+            if isinstance(item, dict)
+        ]
+        final_top_k = max(1, int(top_k))
+        subtask_top_k = max(1, int(top_k))
+        max_concurrent_subtasks = max(1, min(len(subtasks) or 1, self.query_plan_max_concurrent_subtasks))
+        semaphore = asyncio.Semaphore(max_concurrent_subtasks)
+
+        async def run_subtask(index: int, subtask: Dict[str, Any]) -> Dict[str, Any]:
+            async with semaphore:
+                subtask_question = str(subtask.get("question") or subtask.get("display_name") or "").strip()
+                subtask_query_type = str(subtask.get("query_type") or plan.get("query_type") or "fact_lookup")
+                expanded, llm_expanded, llm_used = await self._expand_queries_for_retrieval(
+                    subtask_question,
+                    subtask_query_type,
+                    expand_query_num,
+                )
+                retrieval_result = await self.retriever.retrieve(
+                    question=subtask_question,
+                    collection_name=collection_name,
+                    top_k=subtask_top_k,
+                    query_type=subtask_query_type,
+                    expand_query_num=expand_query_num,
+                    enable_cache=enable_cache,
+                    expanded_queries=expanded,
+                )
+                evidence = self._annotate_subtask_evidence(list(retrieval_result.get("evidence") or []), subtask)
+                return {
+                    "index": index,
+                    "subtask": subtask,
+                    "question": subtask_question,
+                    "query_type": subtask_query_type,
+                    "expanded_queries": expanded,
+                    "llm_expanded": llm_expanded,
+                    "llm_expansion_used": llm_used,
+                    "evidence": evidence,
+                    "retrieval_trace": dict(retrieval_result.get("retrieval_trace") or {}),
+                    "rerank_trace": dict(retrieval_result.get("rerank_trace") or {}),
+                }
+
+        subtask_results = await asyncio.gather(*(run_subtask(index, subtask) for index, subtask in enumerate(subtasks)))
+        subtask_results = sorted(subtask_results, key=lambda item: int(item.get("index") or 0))
+        evidence = self._merge_decomposed_evidence(subtask_results, final_top_k)
+        expanded = []
+        llm_expanded_flat: List[str] = []
+        for result in subtask_results:
+            for item in list(result.get("expanded_queries") or []):
+                value = str(item or "").strip()
+                if value and value not in expanded:
+                    expanded.append(value)
+            for item in list(result.get("llm_expanded") or []):
+                value = str(item or "").strip()
+                if value and value not in llm_expanded_flat:
+                    llm_expanded_flat.append(value)
+
+        retrieval_trace = {
+            "collection_name": collection_name,
+            "query_type": str(plan.get("query_type") or "fact_lookup"),
+            "planning_mode": "decomposed",
+            "query_plan": plan,
+            "subtask_count": len(subtask_results),
+            "configured_max_subtasks": self.query_plan_max_subtasks,
+            "max_concurrent_subtasks": max_concurrent_subtasks,
+            "max_parallel_retrieval_tasks": self.query_plan_max_parallel_retrieval_tasks,
+            "subtask_top_k": subtask_top_k,
+            "final_top_k": final_top_k,
+            "query_variants": expanded,
+            "expanded_queries": expanded,
+            "subtask_traces": [
+                {
+                    "subtask_id": _subtask_id(result.get("subtask") or {}),
+                    "display_name": (result.get("subtask") or {}).get("display_name"),
+                    "question": result.get("question"),
+                    "expanded_queries": result.get("expanded_queries") or [],
+                    "retrieval_trace": result.get("retrieval_trace") or {},
+                    "rerank_trace": result.get("rerank_trace") or {},
+                    "evidence_ids": [item.get("chunk_id") for item in result.get("evidence") or []],
+                    "evidence_count": len(result.get("evidence") or []),
+                }
+                for result in subtask_results
+            ],
+            "intermediate_evidence_count": sum(len(result.get("evidence") or []) for result in subtask_results),
+            "final_evidence_count": len(evidence),
+            "cache_hit": False,
+            "generated_at": time.time(),
+        }
+        rerank_trace = {
+            "planning_mode": "decomposed",
+            "subtask_count": len(subtask_results),
+            "subtask_rerank_traces": [result.get("rerank_trace") or {} for result in subtask_results],
+            "top": [
+                {
+                    "chunk_id": row.get("chunk_id"),
+                    "retrieval_subtask_id": row.get("retrieval_subtask_id"),
+                    "final_score": row.get("final_score"),
+                    "confidence_score": row.get("confidence_score"),
+                    "score": row.get("score"),
+                }
+                for row in evidence
+            ],
+        }
+        retrieval_result = {
+            "query_type": str(plan.get("query_type") or "fact_lookup"),
+            "evidence": evidence,
+            "candidates": evidence,
+            "retrieval_trace": retrieval_trace,
+            "rerank_trace": rerank_trace,
+        }
+        stage = {
+            "phase": "parallel_hybrid_retrieval",
+            "duration_ms": int((time.perf_counter() - started) * 1000),
+            "cache_precheck_hit": False,
+            "query_expansion_cache_hit": False,
+            "query_expansion_skipped": "",
+            "cache_hit": False,
+            "llm_query_expansion_used": any(bool(result.get("llm_expansion_used")) for result in subtask_results),
+            "query_variant_count": len(expanded),
+            "planning_mode": "decomposed",
+            "subtask_count": len(subtask_results),
+            "max_concurrent_subtasks": max_concurrent_subtasks,
+            "max_parallel_retrieval_tasks": self.query_plan_max_parallel_retrieval_tasks,
+            "intermediate_evidence_count": retrieval_trace["intermediate_evidence_count"],
+        }
+        return retrieval_result, expanded, llm_expanded_flat or None, bool(llm_expanded_flat), stage
+
     async def _retrieve_with_cache_aware_expansion(
         self,
         question: str,
@@ -386,6 +667,15 @@ class TrustedQAWorkflow:
         started = time.perf_counter()
         effective_top_k = max(1, int(top_k))
         effective_expand_num = max(1, int(expand_query_num))
+        plan = build_query_plan(question, query_type)
+        if is_decomposed_plan(plan):
+            return await self._retrieve_decomposed_plan(
+                plan=plan,
+                collection_name=collection_name,
+                top_k=effective_top_k,
+                expand_query_num=effective_expand_num,
+                enable_cache=enable_cache,
+            )
         cache_precheck_hit = False
         query_expansion_cache_hit = False
         expanded: List[str]
@@ -600,8 +890,9 @@ class TrustedQAWorkflow:
         query_type = str(understanding.get("query_type") or intent_trace.get("query_type") or "fact_lookup")
         intent_duration_ms = _duration_ms(started_at)
         skill_started_at = time.perf_counter()
-        selected_skill = understanding.get("selected_skill") or self.skill_registry.select_skill(query_type)
         slots = dict(understanding.get("slots") or {})
+        _plan, query_type, slots, intent_trace = self._apply_query_plan(question, query_type, slots, intent_trace)
+        selected_skill = self.skill_registry.select_skill(query_type)
         skill_package = selected_skill.package_metadata()
         observations = list(state.get("observations") or [])
         observations.append({"phase": "intent_slot_understanding_agent", "intent": intent_trace, "slots": slots, "duration_ms": intent_duration_ms})
@@ -1044,12 +1335,13 @@ class TrustedQAWorkflow:
         intent_trace = dict(understanding.get("intent_trace") or {})
         query_type = str(understanding.get("query_type") or intent_trace.get("query_type") or "fact_lookup")
         slots = dict(understanding.get("slots") or {})
+        _plan, query_type, slots, intent_trace = self._apply_query_plan(effective_question, query_type, slots, intent_trace)
         observations.append({"phase": "intent_slot_understanding_agent", "intent": intent_trace, "slots": slots, "duration_ms": intent_duration_ms})
         await _emit_progress_stage(progress_callback, observations[-1])
 
         skill_started_at = time.perf_counter()
         await _emit_progress_marker(progress_callback, "select_skill_from_registry")
-        selected_skill = understanding.get("selected_skill") or self.skill_registry.select_skill(query_type)
+        selected_skill = self.skill_registry.select_skill(query_type)
         skill_package = selected_skill.package_metadata()
         skill_duration_ms = _duration_ms(skill_started_at)
         observations.append({"phase": "select_skill_from_registry", "selected_skill": selected_skill.skill_name, "skill_package": skill_package, "duration_ms": skill_duration_ms})

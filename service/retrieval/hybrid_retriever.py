@@ -63,13 +63,16 @@ class HybridRetriever:
         )
 
         candidates = list(stage1.get("candidates") or [])
-        reranked, rerank_trace = self.reranker.rerank(
+        reranked, rerank_trace = await asyncio.to_thread(
+            self.reranker.rerank,
             query=question,
             candidates=candidates,
             top_k=top_k,
             query_type=query_type,
             table_evidence_quota=self.table_evidence_quota,
         )
+        rerank_trace = dict(rerank_trace or {})
+        rerank_trace["async_offloaded"] = True
 
         retrieval_trace = dict(stage1.get("retrieval_trace") or {})
         retrieval_trace["candidate_pool_size"] = len(candidates)
