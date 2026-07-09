@@ -106,6 +106,7 @@ DEFAULT_CONFIG: dict[str, Any] = {
         "cross_encoder_batch_size": 8,
         "cross_encoder_max_length": 512,
         "cross_encoder_local_files_only": False,
+        "cross_encoder_device": "auto",
     },
     "cache": {
         "enabled": True,

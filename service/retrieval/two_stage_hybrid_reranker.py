@@ -198,6 +198,7 @@ class TwoStageHybridReranker:
         cross_encoder_batch_size: int = 8,
         cross_encoder_max_length: int = 512,
         cross_encoder_local_files_only: bool = False,
+        cross_encoder_device: str = "auto",
         cross_encoder_load_on_request: bool = False,
         cross_encoder_scorer: Any | None = None,
     ) -> None:
@@ -213,6 +214,7 @@ class TwoStageHybridReranker:
         self.cross_encoder_batch_size = max(1, int(cross_encoder_batch_size))
         self.cross_encoder_max_length = max(16, int(cross_encoder_max_length))
         self.cross_encoder_local_files_only = bool(cross_encoder_local_files_only)
+        self.cross_encoder_device = str(cross_encoder_device or "auto").strip().lower() or "auto"
         self.cross_encoder_load_on_request = bool(cross_encoder_load_on_request)
         self._cross_encoder_scorer = cross_encoder_scorer
         self._cross_encoder_load_failed = ""
@@ -384,6 +386,7 @@ class TwoStageHybridReranker:
                 "status": "fallback",
                 "reason": reason,
                 "model": self.cross_encoder_model,
+                "requested_device": self.cross_encoder_device,
             }
 
         texts = [_candidate_pair_text(item) for item in light_pool]
@@ -455,6 +458,7 @@ class TwoStageHybridReranker:
             batch_size=self.cross_encoder_batch_size,
             max_length=self.cross_encoder_max_length,
             local_files_only=self.cross_encoder_local_files_only,
+            device=self.cross_encoder_device,
         )
         if not scorer._load():
             self._cross_encoder_load_failed = scorer.last_error or "model_load_failed"
@@ -478,11 +482,14 @@ class TwoStageHybridReranker:
                 "status": "fallback",
                 "reason": self._cross_encoder_load_failed or "scorer_unavailable",
                 "model": self.cross_encoder_model,
+                "requested_device": self.cross_encoder_device,
             }
         return {
             "status": "loaded",
             "model": self.cross_encoder_model,
+            "requested_device": self.cross_encoder_device,
             "device": getattr(scorer, "_device", "unknown"),
+            "cuda_available": bool(getattr(scorer, "_cuda_available", False)),
             "local_files_only": self.cross_encoder_local_files_only,
         }
 

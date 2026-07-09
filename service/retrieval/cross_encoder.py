@@ -10,16 +10,31 @@ class TransformersCrossEncoderScorer:
         batch_size: int = 8,
         max_length: int = 512,
         local_files_only: bool = False,
+        device: str = "auto",
     ) -> None:
         self.model_name = str(model_name or "BAAI/bge-reranker-base")
         self.batch_size = max(1, int(batch_size))
         self.max_length = max(16, int(max_length))
         self.local_files_only = bool(local_files_only)
+        self.requested_device = str(device or "auto").strip().lower() or "auto"
         self.last_error = ""
         self._tokenizer = None
         self._model = None
         self._torch = None
         self._device = "cpu"
+        self._cuda_available = False
+
+    def _resolve_device(self, torch: Any) -> str:
+        self._cuda_available = bool(torch.cuda.is_available())
+        requested = self.requested_device
+        if requested in {"", "auto"}:
+            return "cuda" if self._cuda_available else "cpu"
+        if requested.startswith("cuda") and not self._cuda_available:
+            raise RuntimeError(
+                f"Requested cross_encoder_device={requested}, but torch.cuda.is_available() is false. "
+                "Install a CUDA-enabled PyTorch build in the backend conda environment or set cross_encoder_device=cpu."
+            )
+        return requested
 
     def _load(self) -> bool:
         if self._tokenizer is not None and self._model is not None and self._torch is not None:
@@ -30,7 +45,7 @@ class TransformersCrossEncoderScorer:
             from transformers import AutoModelForSequenceClassification, AutoTokenizer  # type: ignore
 
             self._torch = torch
-            self._device = "cuda" if torch.cuda.is_available() else "cpu"
+            self._device = self._resolve_device(torch)
             self._tokenizer = AutoTokenizer.from_pretrained(
                 self.model_name,
                 local_files_only=self.local_files_only,
@@ -87,7 +102,9 @@ class TransformersCrossEncoderScorer:
                 "model": self.model_name,
                 "batch_size": self.batch_size,
                 "max_length": self.max_length,
+                "requested_device": self.requested_device,
                 "device": self._device,
+                "cuda_available": self._cuda_available,
             }
         except Exception as exc:
             self.last_error = f"{type(exc).__name__}: {exc}"[:500]

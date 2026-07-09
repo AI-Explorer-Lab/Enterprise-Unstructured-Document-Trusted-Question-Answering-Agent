@@ -338,6 +338,7 @@ def _map_to_env(config: Dict[str, Any]) -> Dict[str, str]:
         "HYBRID_TABLE_SCORE_FLOOR": retrieval.get("hybrid_table_score_floor"),
         "RERANKER_CROSS_ENCODER_ENABLED": reranker.get("cross_encoder_enabled"),
         "RERANKER_CROSS_ENCODER_MODEL": reranker.get("cross_encoder_model"),
+        "RERANKER_CROSS_ENCODER_DEVICE": reranker.get("cross_encoder_device"),
         "RERANKER_CROSS_ENCODER_CANDIDATE_POOL": reranker.get("cross_encoder_candidate_pool"),
         "CHUNK_SIZE_TOKENS": chunking.get("chunk_size_tokens"),
         "CHUNK_OVERLAP_TOKENS": chunking.get("chunk_overlap_tokens"),
