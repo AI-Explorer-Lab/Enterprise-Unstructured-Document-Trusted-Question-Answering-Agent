@@ -290,6 +290,7 @@ class TrustedQAWorkflow:
                 cross_encoder_batch_size=int(reranker_cfg.get("cross_encoder_batch_size", 8)),
                 cross_encoder_max_length=int(reranker_cfg.get("cross_encoder_max_length", 512)),
                 cross_encoder_local_files_only=bool(reranker_cfg.get("cross_encoder_local_files_only", False)),
+                cross_encoder_device=str(reranker_cfg.get("cross_encoder_device", "auto")),
                 cross_encoder_load_on_request=bool(reranker_cfg.get("cross_encoder_load_on_request", False)),
             ),
             table_evidence_quota=int(retrieval_cfg.get("table_evidence_quota", 2)),
