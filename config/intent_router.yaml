@@ -1,0 +1,33 @@
+intent_router:
+  enabled: true
+  top_k: 3
+  accept_threshold: 0.58
+  reject_threshold: 0.32
+  margin_threshold: 0.08
+  llm_fallback_enabled: true
+  calibration_status: initial
+  prototypes:
+    fact_lookup:
+      - 查询公司名称、地址、法定代表人、股票代码等明确事实
+      - 查一下某项披露是什么，回答一个具体事实
+      - 告诉我公司基本信息或某个条款内容
+    table_qa:
+      - 查询财务指标、表格数值、金额、比例、余额或每股收益
+      - 某年度营业收入、净利润、现金流和研发投入是多少
+      - 分析资产负债表、利润表或现金流量表中的数据
+    summarization:
+      - 总结、概括或归纳文档、章节和主题
+      - 梳理报告主要内容、风险和经营情况
+      - 对某个范围做摘要
+    citation_locate:
+      - 定位某句话、披露或结论在原文哪一页
+      - 查找原文位置和页码
+      - 找到支持某个已知说法的出处
+    report_generation:
+      - 根据指定范围撰写、生成或输出一份报告
+      - 把材料整理成分析报告
+      - 按报告结构输出完整内容
+    multi_doc_compare:
+      - 对比两个公司、年份、文档或对象的指标和差异
+      - 比较两份年报中的营业收入、利润或风险
+      - 判断两个对象谁更高以及差距如何

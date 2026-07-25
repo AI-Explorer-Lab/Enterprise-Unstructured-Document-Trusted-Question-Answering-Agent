@@ -275,6 +275,19 @@ def _grounded_answer_scope_contract(scope: Optional[Mapping[str, Any]]) -> str:
     unavailable = _scope_years({"years": scope.get("unavailable_years")})
     if unavailable:
         lines.append(f"- Unavailable requested years: {', '.join(str(year) for year in unavailable)}. Do not substitute other years.")
+    output_format = str(scope.get("output_format") or "").strip()
+    requirements = scope.get("answer_requirements")
+    requirements = requirements if isinstance(requirements, Mapping) else {}
+    if output_format == "short_report":
+        lines.append("- Output format: a concise report with a short conclusion and only the essential supporting data.")
+    elif output_format == "report":
+        lines.append("- Output format: a structured report with headings and evidence-backed conclusions.")
+    elif output_format == "table":
+        lines.append("- Output format: use a compact Markdown table where it improves comparison.")
+    if requirements.get("need_citation"):
+        lines.append("- Citation requirement: include a citation id for every material data point and conclusion.")
+    if str(requirements.get("length") or "") == "short":
+        lines.append("- Length requirement: keep the answer brief and avoid unrelated background.")
     if not lines:
         return ""
     return "Resolved retrieval scope:\n" + "\n".join(lines) + "\n"
