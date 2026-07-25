@@ -75,6 +75,49 @@ def _companies(scopes: Iterable[Mapping[str, Any]]) -> Dict[str, Mapping[str, An
     return result
 
 
+def _requested_companies(slots: Mapping[str, Any]) -> List[str]:
+    values = slots.get("companies")
+    requested: List[str] = []
+    for value in _as_values(values):
+        if isinstance(value, Mapping):
+            text = _clean(value.get("company_name") or value.get("name") or value.get("company_id"))
+        else:
+            text = _clean(value)
+        if text and text not in requested:
+            requested.append(text)
+    return requested
+
+
+def _scope_company_names(item: Mapping[str, Any]) -> List[str]:
+    names: List[str] = []
+    for key in ("company_id", "company_name"):
+        value = _clean(item.get(key))
+        if value and value not in names:
+            names.append(value)
+    for value in _as_values(item.get("aliases") or item.get("company_aliases")):
+        text = _clean(value)
+        if text and text not in names:
+            names.append(text)
+    return names
+
+
+def _company_is_available(
+    requested: str,
+    companies: Mapping[str, Mapping[str, Any]],
+    company_registry: CompanyRegistry,
+) -> bool:
+    known = company_registry.resolve_known(company_name=requested)
+    if known is not None and known.company_id in companies:
+        return True
+    requested_names = {requested}
+    if known is not None:
+        requested_names.update([known.company_id, known.company_name, *known.aliases])
+    for item in companies.values():
+        if requested_names.intersection(_scope_company_names(item)):
+            return True
+    return False
+
+
 def _trend_limit(question: str) -> int | None:
     if "近两年" in question:
         return 2
@@ -107,6 +150,8 @@ class RetrievalScope:
     refuse_reason: str = ""
     refuse_message: str = ""
     unavailable_years: List[int] = field(default_factory=list)
+    requested_companies: List[str] = field(default_factory=list)
+    unsupported_companies: List[str] = field(default_factory=list)
     available_companies: List[Dict[str, Any]] = field(default_factory=list)
     available_years: List[int] = field(default_factory=list)
 
@@ -132,6 +177,8 @@ class RetrievalScope:
             "refuse_reason": self.refuse_reason,
             "refuse_message": self.refuse_message,
             "unavailable_years": list(self.unavailable_years),
+            "requested_companies": list(self.requested_companies),
+            "unsupported_companies": list(self.unsupported_companies),
             "available_companies": list(self.available_companies),
             "available_years": list(self.available_years),
             "metadata_filter": self.metadata_filter(),
@@ -151,20 +198,33 @@ def resolve_retrieval_scope(
     focus = conversation_focus or {}
     slot_values = slots or {}
     companies = _companies(scopes)
+    requested_companies = _requested_companies(slot_values)
+    unsupported_companies = [
+        requested
+        for requested in requested_companies
+        if companies and not _company_is_available(requested, companies, company_registry)
+    ]
+    multi_company_request = (
+        query_type == "multi_doc_compare"
+        and len(requested_companies) >= 2
+        and not unsupported_companies
+    )
 
-    company: CompanyProfile | None = company_registry.match_question(question, scopes)
+    company: CompanyProfile | None = None if multi_company_request else company_registry.match_question(question, scopes)
     source_parts: List[str] = []
-    if company is not None:
+    if multi_company_request:
+        source_parts.append("explicit_multi_company")
+    elif company is not None:
         source_parts.append("explicit_company")
-    if company is None:
+    if company is None and not multi_company_request:
         company = company_registry.resolve(company_name=_clean(slot_values.get("company") or slot_values.get("entity")))
         if company is not None:
             source_parts.append("slot_company")
-    if company is None:
+    if company is None and not multi_company_request:
         company = company_registry.resolve(company_id=_clean(focus.get("company_id")), company_name=_clean(focus.get("company")))
         if company is not None:
             source_parts.append("conversation_context_company")
-    if company is None and len(companies) == 1:
+    if company is None and not multi_company_request and len(companies) == 1 and not unsupported_companies:
         only = next(iter(companies.values()))
         company = company_registry.resolve(company_id=_clean(only.get("company_id")), company_name=_clean(only.get("company_name")))
         if company is not None:
@@ -190,10 +250,25 @@ def resolve_retrieval_scope(
         limit = _trend_limit(text)
         years = available_years[-limit:] if limit else available_years
         source_parts.append("trend_request")
+    if not years and (company_id or multi_company_request) and len(available_years) == 1:
+        years = [available_years[0]]
+        source_parts.append("single_period_available")
 
     unavailable_years: List[int] = []
     refuse_message = ""
-    if company_id and explicit_years and available_years:
+    refuse_reason = ""
+    if unsupported_companies:
+        missing_hint = "、".join(unsupported_companies)
+        available_hint = "、".join(
+            _clean(item.get("company_name")) or company_id
+            for company_id, item in sorted(companies.items())
+        )
+        refuse_reason = "unsupported_by_data"
+        refuse_message = (
+            f"已识别到问题涉及 {missing_hint}，但当前文档集只包含"
+            f"{available_hint or '其他公司'}的数据，暂时不能完成可靠回答或跨公司对比。"
+        )
+    elif company_id and explicit_years and available_years:
         unavailable_years = [year for year in explicit_years if year not in available_years]
         if unavailable_years:
             available_hint = "、".join(str(year) for year in available_years)
@@ -203,11 +278,12 @@ def resolve_retrieval_scope(
                 f"当前文档集中{company_hint}可用财报年份为 {available_hint}，"
                 f"未找到 {requested_hint} 年报；不能使用其他年份的数据替代回答。"
             )
+            refuse_reason = "unavailable_year"
 
     missing: List[str] = []
-    if len(companies) > 1 and not company_id:
+    if not unsupported_companies and not multi_company_request and len(companies) > 1 and not company_id:
         missing.append("company")
-    if not years and is_year_sensitive_question(question, query_type, slot_values):
+    if not unsupported_companies and not years and is_year_sensitive_question(question, query_type, slot_values):
         missing.append("year")
     if not years and available_years and company_id and not missing:
         years = [available_years[-1]]
@@ -237,10 +313,12 @@ def resolve_retrieval_scope(
         should_clarify=bool(missing),
         missing_slots=missing,
         clarify_question=clarify,
-        should_refuse=bool(unavailable_years) and not missing,
-        refuse_reason="unavailable_year" if unavailable_years and not missing else "",
-        refuse_message=refuse_message if unavailable_years and not missing else "",
+        should_refuse=bool(refuse_reason) and not missing,
+        refuse_reason=refuse_reason if not missing else "",
+        refuse_message=refuse_message if refuse_reason and not missing else "",
         unavailable_years=unavailable_years if not missing else [],
+        requested_companies=requested_companies,
+        unsupported_companies=unsupported_companies if not missing else [],
         available_companies=company_options,
         available_years=available_years,
     )

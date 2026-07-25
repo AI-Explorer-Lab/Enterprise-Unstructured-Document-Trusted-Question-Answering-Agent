@@ -94,6 +94,35 @@ def _retry_filter_for_years(slots: Mapping[str, Any], years: Sequence[int]) -> D
     return retry_filter
 
 
+def _required_subtasks(slots: Mapping[str, Any]) -> List[Dict[str, str]]:
+    plan = slots.get("query_plan")
+    if not isinstance(plan, Mapping) or str(plan.get("mode") or "") != "decomposed":
+        return []
+    result: List[Dict[str, str]] = []
+    for item in plan.get("subtasks") or []:
+        if not isinstance(item, Mapping):
+            continue
+        subtask_id = _clean(item.get("slot") or item.get("subtask_id") or item.get("display_name"))
+        if not subtask_id:
+            continue
+        result.append(
+            {
+                "subtask_id": subtask_id,
+                "display_name": _clean(item.get("display_name")) or subtask_id,
+            }
+        )
+    return result
+
+
+def _evidence_subtask_ids(rows: Sequence[Mapping[str, Any]]) -> List[str]:
+    result: List[str] = []
+    for row in rows:
+        subtask_id = _clean(row.get("retrieval_subtask_id"))
+        if subtask_id and subtask_id not in result:
+            result.append(subtask_id)
+    return result
+
+
 def _confidence(rows: List[Dict[str, Any]]) -> float:
     if not rows:
         return 0.0
@@ -181,9 +210,53 @@ class EvidenceGate:
 
         if query_type == "table_qa" and table_count < max(1, int(table_evidence_quota)):
             diagnostics["coverage_warnings"].append("missing_table_evidence")
+            decision = "retry" if retry_count < self.retry_limit else "refuse"
+            reason = "missing_table_evidence" if decision == "retry" else "missing_table_evidence_after_retry"
+            return {
+                "decision": decision,
+                "reason": reason,
+                **diagnostics,
+                "confidence": _confidence(rows),
+                "message": "检索结果缺少满足要求的表格证据，不能仅依据普通文本生成财务数值结论。",
+            }
 
         if query_type == "multi_doc_compare" and len(docs) < 2:
             diagnostics["coverage_warnings"].append("multi_doc_evidence_missing")
+            decision = "retry" if retry_count < self.retry_limit else "refuse"
+            reason = "missing_multi_doc_evidence" if decision == "retry" else "missing_multi_doc_evidence_after_retry"
+            return {
+                "decision": decision,
+                "reason": reason,
+                **diagnostics,
+                "confidence": _confidence(rows),
+                "message": "检索结果没有覆盖至少两份独立文档，不能生成可靠的多文档对比结论。",
+            }
+
+        required_subtasks = _required_subtasks(slots)
+        if required_subtasks:
+            evidence_subtasks = _evidence_subtask_ids(rows)
+            missing_subtasks = [
+                item
+                for item in required_subtasks
+                if item["subtask_id"] not in evidence_subtasks
+            ]
+            diagnostics["required_subtasks"] = required_subtasks
+            diagnostics["evidence_subtasks"] = evidence_subtasks
+            diagnostics["missing_subtasks"] = missing_subtasks
+            if missing_subtasks:
+                diagnostics["coverage_warnings"].append("missing_subtask_evidence")
+                decision = "retry" if retry_count < self.retry_limit else "refuse"
+                reason = "missing_subtask_evidence" if decision == "retry" else "missing_subtask_evidence_after_retry"
+                missing_hint = "、".join(item["display_name"] for item in missing_subtasks)
+                plan = slots.get("query_plan") if isinstance(slots.get("query_plan"), Mapping) else {}
+                return {
+                    "decision": decision,
+                    "reason": reason,
+                    **diagnostics,
+                    "confidence": _confidence(rows),
+                    "message": f"检索证据没有覆盖计划中的全部子任务，缺少 {missing_hint}，不能生成完整结论。",
+                    "suggested_retry_query": _clean(plan.get("question")),
+                }
 
         requested_years = _requested_years(slots)
         if len(requested_years) > 1 and query_type in {"table_qa", "fact_lookup", "multi_doc_compare", "summarization", "report_generation"}:

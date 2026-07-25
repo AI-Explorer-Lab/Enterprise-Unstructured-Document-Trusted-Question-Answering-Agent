@@ -19,6 +19,13 @@ from service.agent.query_classifier import (
 )
 from service.agent.schemas import QUERY_TYPE_SET, normalize_query_type
 from service.agent.skills import SkillDefinition
+from service.agent.structured_understanding import (
+    HardSignalExtractor,
+    QUERY_TYPE_TO_ACTION,
+    merge_structured_frame,
+    query_type_from_frame,
+    secondary_query_types,
+)
 from utils.config_loader import get_app_config
 from utils.content_normalizer import normalize_whitespace
 
@@ -65,7 +72,18 @@ INTENT_NAMES = {
 SLOT_KEYS = ("years", "metric", "period", "target_statement", "compare_targets", "scope", "table_name", "unit", "focus")
 FINAL_AUDIT_DECISIONS = {"answer", "retry", "refuse"}
 DECISION_RANK = {"answer": 0, "retry": 1, "refuse": 2}
-HARD_RULE_REASONS = {"no_evidence", "no_evidence_after_retry", "missing_year_evidence", "missing_year_evidence_after_retry"}
+HARD_RULE_REASONS = {
+    "no_evidence",
+    "no_evidence_after_retry",
+    "missing_year_evidence",
+    "missing_year_evidence_after_retry",
+    "missing_subtask_evidence",
+    "missing_subtask_evidence_after_retry",
+    "missing_table_evidence",
+    "missing_table_evidence_after_retry",
+    "missing_multi_doc_evidence",
+    "missing_multi_doc_evidence_after_retry",
+}
 YEAR_RE = re.compile(r"(?:19|20)\d{2}")
 NUMBER_RE = re.compile(r"[-+]?\d+(?:\.\d+)?")
 
@@ -91,6 +109,15 @@ class SlotFillSchema(BaseModel):
 
 class QuestionUnderstandingSchema(BaseModel):
     query_type: str = "fact_lookup"
+    primary_action: str = ""
+    secondary_actions: List[str] = Field(default_factory=list)
+    domain_objects: List[str] = Field(default_factory=list)
+    evidence_modes: List[str] = Field(default_factory=list)
+    output_format: str = "answer"
+    requirements: Dict[str, Any] = Field(default_factory=dict)
+    companies: List[str] = Field(default_factory=list)
+    metrics: List[str] = Field(default_factory=list)
+    routing_state: str = ""
     secondary_intents: List[str] = Field(default_factory=list)
     need_citation: bool = False
     citation_mode: str = ""
@@ -359,11 +386,19 @@ def _resolve_llm_intent_slot_enabled(explicit: bool | None = None) -> bool:
 
 
 class QuestionUnderstandingAgent:
-    def __init__(self, llm_service: Any | None = None, use_llm_intent_slot: bool | None = None) -> None:
+    def __init__(
+        self,
+        llm_service: Any | None = None,
+        use_llm_intent_slot: bool | None = None,
+        semantic_router: Any | None = None,
+        company_registry: Any | None = None,
+    ) -> None:
         self.llm_service = llm_service
         self.use_llm_intent_slot = _resolve_llm_intent_slot_enabled(use_llm_intent_slot)
         self.intent_agent = IntentUnderstandingAgent(llm_service)
         self.slot_agent = SlotFillingAgent(llm_service)
+        self.semantic_router = semantic_router
+        self.hard_signal_extractor = HardSignalExtractor(company_registry) if company_registry is not None else None
 
     async def understand(
         self,
@@ -372,76 +407,208 @@ class QuestionUnderstandingAgent:
         conversation_context: Mapping[str, Any] | None = None,
         use_llm_intent_slot: bool | None = None,
     ) -> Dict[str, Any]:
-        use_llm_for_request = self.use_llm_intent_slot if use_llm_intent_slot is None else bool(use_llm_intent_slot)
-        llm_attempted = False
-        if use_llm_for_request:
-            llm_attempted = True
+        del use_llm_intent_slot
+        frame = (
+            self.hard_signal_extractor.extract(question)
+            if self.hard_signal_extractor is not None
+            else {
+                "primary_action": "",
+                "secondary_actions": [],
+                "domain_objects": [],
+                "evidence_modes": [],
+                "output_format": "answer",
+                "requirements": {},
+                "slots": {},
+                "routing_state": "needs_semantic_route",
+                "field_evidence": [],
+            }
+        )
+        semantic_route: Dict[str, Any] = {
+            "candidates": [],
+            "decision": "disabled",
+            "top_query_type": "",
+            "top_score": 0.0,
+            "margin": 0.0,
+            "provider": "disabled",
+        }
+        if self.semantic_router is not None:
+            try:
+                semantic_route = self.semantic_router.route(question)
+                if hasattr(semantic_route, "__await__"):
+                    semantic_route = await semantic_route
+                if hasattr(semantic_route, "as_dict"):
+                    semantic_route = semantic_route.as_dict()
+                if not isinstance(semantic_route, Mapping):
+                    semantic_route = {}
+                semantic_route = dict(semantic_route)
+            except Exception as exc:
+                semantic_route = {
+                    "candidates": [],
+                    "decision": "error",
+                    "top_query_type": "",
+                    "top_score": 0.0,
+                    "margin": 0.0,
+                    "provider": "error",
+                    "error_type": type(exc).__name__,
+                }
+
+        query_type = query_type_from_frame(frame, semantic_route)
+        if query_type != "ambiguous_query":
+            source = "hard_signal+embedding" if frame.get("primary_action") else "embedding"
+            return self._build_structured_result(
+                question=question,
+                query_type=query_type,
+                frame=frame,
+                semantic_route=semantic_route,
+                skill_registry=skill_registry,
+                source=source,
+                reason="Built a multi-dimensional query frame, then selected the execution skill.",
+            )
+
+        llm_fallback_enabled = bool(getattr(self.semantic_router, "llm_fallback_enabled", True))
+        llm_result = None
+        if llm_fallback_enabled:
             llm_result = await self._understand_with_llm(
                 question,
                 skill_registry,
                 conversation_context=conversation_context,
                 include_answer_requirements=True,
             )
-            if llm_result is not None:
-                return llm_result
-
-        rule_query_type = _keyword_query_type(question)
-        if rule_query_type is not None:
-            selected_skill = skill_registry.select_skill(rule_query_type)
-            rule_slots = self.slot_agent._rule_slots(question, rule_query_type, selected_skill)
-            if _rule_slots_sufficient(rule_slots, selected_skill):
-                slots = _merge_slots(rule_slots, None)
-                slots["__slot_fill_source__"] = "rule"
-                slots["__skill_name__"] = selected_skill.skill_name
-                slots["__missing_required__"] = selected_skill.get_missing_slots(slots)
-                intent_trace = IntentUnderstandingAgent._build_result(
-                    rule_query_type,
-                    source="rule_keyword",
-                    reason="Matched a fixed intent keyword and required slots; skipped LLM understanding.",
-                )
-                intent_trace["understanding_source"] = "rule"
-                return {"intent_trace": intent_trace, "query_type": rule_query_type, "selected_skill": selected_skill, "slots": slots}
-
-        classifier_query_type = classify_query_type(question)
-        if classifier_query_type != "ambiguous_query":
-            selected_skill = skill_registry.select_skill(classifier_query_type)
-            rule_slots = self.slot_agent._rule_slots(question, classifier_query_type, selected_skill)
-            if _rule_slots_sufficient(rule_slots, selected_skill):
-                slots = _merge_slots(rule_slots, None)
-                slots["__slot_fill_source__"] = "rule_classifier"
-                slots["__skill_name__"] = selected_skill.skill_name
-                slots["__missing_required__"] = selected_skill.get_missing_slots(slots)
-                intent_trace = IntentUnderstandingAgent._build_result(
-                    classifier_query_type,
-                    source="rule_classifier",
-                    reason="Matched deterministic classifier and required slots; skipped LLM understanding.",
-                )
-                intent_trace["understanding_source"] = "rule_classifier"
-                return {"intent_trace": intent_trace, "query_type": classifier_query_type, "selected_skill": selected_skill, "slots": slots}
-
-        if not llm_attempted:
-            llm_result = await self._understand_with_llm(
-                question,
-                skill_registry,
-                conversation_context=conversation_context,
-                include_answer_requirements=False,
+        if llm_result is not None:
+            incoming_frame = llm_result.get("structured_frame")
+            if not isinstance(incoming_frame, Mapping):
+                parsed_query_type = str(llm_result.get("query_type") or "fact_lookup")
+                incoming_frame = {
+                    "primary_action": QUERY_TYPE_TO_ACTION.get(parsed_query_type, ""),
+                    "secondary_actions": [],
+                    "domain_objects": [],
+                    "evidence_modes": [],
+                    "output_format": "answer",
+                    "requirements": llm_result.get("answer_requirements") or {},
+                    "slots": {},
+                    "routing_state": "ready",
+                }
+            merged_frame = merge_structured_frame(frame, incoming_frame)
+            return self._build_structured_result(
+                question=question,
+                query_type=str(llm_result.get("query_type") or "fact_lookup"),
+                frame=merged_frame,
+                semantic_route=semantic_route,
+                skill_registry=skill_registry,
+                source="llm_disambiguation",
+                reason="Hard signals and embedding candidates were insufficient; used one schema-validated LLM disambiguation.",
+                incoming_slots=llm_result.get("slots") if isinstance(llm_result.get("slots"), Mapping) else None,
             )
-            if llm_result is not None:
-                return llm_result
 
-        query_type = rule_query_type or self.intent_agent._fallback_query_type(question)
-        selected_skill = skill_registry.select_skill(query_type)
-        slots = _merge_slots(self.slot_agent._rule_slots(question, query_type, selected_skill), None)
-        slots["__slot_fill_source__"] = "rule_fallback"
+        fallback_query_type = self.intent_agent._fallback_query_type(question)
+        fallback_frame = merge_structured_frame(
+            frame,
+            {
+                "primary_action": QUERY_TYPE_TO_ACTION.get(fallback_query_type, "lookup"),
+                "routing_state": "fallback",
+            },
+        )
+        return self._build_structured_result(
+            question=question,
+            query_type=fallback_query_type,
+            frame=fallback_frame,
+            semantic_route=semantic_route,
+            skill_registry=skill_registry,
+            source="deterministic_fallback",
+            reason="Semantic routing and LLM disambiguation were unavailable; used the deterministic fallback.",
+        )
+
+    def _build_structured_result(
+        self,
+        *,
+        question: str,
+        query_type: str,
+        frame: Mapping[str, Any],
+        semantic_route: Mapping[str, Any],
+        skill_registry: Any,
+        source: str,
+        reason: str,
+        incoming_slots: Mapping[str, Any] | None = None,
+    ) -> Dict[str, Any]:
+        normalized_query_type = normalize_query_type(query_type)
+        selected_skill = skill_registry.select_skill(normalized_query_type)
+        slots = _merge_slots(
+            self.slot_agent._rule_slots(question, normalized_query_type, selected_skill),
+            incoming_slots,
+        )
+        frame_slots = frame.get("slots") if isinstance(frame.get("slots"), Mapping) else {}
+        years = _clean_list(frame_slots.get("periods"))
+        metrics = _clean_list(frame_slots.get("metrics"))
+        compare_targets = _clean_list(frame_slots.get("compare_targets"))
+        companies = _clean_list(frame_slots.get("companies"))
+        if years:
+            slots["years"] = years
+            slots["period"] = years[0] if len(years) == 1 else "、".join(years)
+        if metrics:
+            slots["metric"] = "、".join(metrics)
+        if compare_targets:
+            slots["compare_targets"] = compare_targets
+        if companies:
+            slots["companies"] = companies
+        slots["domain_objects"] = _clean_list(frame.get("domain_objects"))
+        slots["evidence_modes"] = _clean_list(frame.get("evidence_modes"))
+        slots["output_format"] = _clean_str(frame.get("output_format")) or "answer"
+        slots["requirements"] = dict(frame.get("requirements") or {})
+        slots["structured_frame"] = dict(frame)
+        slots["routing_state"] = _clean_str(frame.get("routing_state")) or "ready"
+        slots["router_candidates"] = list(semantic_route.get("candidates") or [])
+        slots["__slot_fill_source__"] = source
         slots["__skill_name__"] = selected_skill.skill_name
         slots["__missing_required__"] = selected_skill.get_missing_slots(slots)
+
+        secondary_intents = secondary_query_types(frame, normalized_query_type)
+        requirements = frame.get("requirements") if isinstance(frame.get("requirements"), Mapping) else {}
+        need_citation = bool(requirements.get("need_citation"))
+        citation_mode = _clean_str(requirements.get("citation_mode")) or ("source_for_answer" if need_citation else "")
+        answer_should_include = ["source_snippet", "page_or_location"] if need_citation else []
+        if need_citation and (slots.get("metric") or "table" in slots.get("evidence_modes", [])):
+            answer_should_include = ["value", "unit", *answer_should_include]
+
         intent_trace = IntentUnderstandingAgent._build_result(
-            query_type,
-            source="rule_fallback",
-            reason="Combined LLM understanding was unavailable; used rule fallback without separate slot LLM.",
+            normalized_query_type,
+            source=source,
+            reason=reason,
         )
-        intent_trace["understanding_source"] = "rule_fallback"
-        return {"intent_trace": intent_trace, "query_type": query_type, "selected_skill": selected_skill, "slots": slots}
+        intent_trace.update(
+            {
+                "understanding_source": source,
+                "primary_action": frame.get("primary_action") or QUERY_TYPE_TO_ACTION.get(normalized_query_type, ""),
+                "secondary_actions": list(frame.get("secondary_actions") or []),
+                "domain_objects": list(frame.get("domain_objects") or []),
+                "evidence_modes": list(frame.get("evidence_modes") or []),
+                "output_format": frame.get("output_format") or "answer",
+                "requirements": dict(requirements),
+                "routing_state": frame.get("routing_state") or "ready",
+                "field_evidence": list(frame.get("field_evidence") or []),
+                "semantic_router": dict(semantic_route),
+                "secondary_intents": secondary_intents,
+                "need_citation": need_citation,
+                "citation_mode": citation_mode,
+                "answer_should_include": answer_should_include,
+            }
+        )
+        return {
+            "intent_trace": intent_trace,
+            "query_type": normalized_query_type,
+            "selected_skill": selected_skill,
+            "slots": slots,
+            "structured_frame": dict(frame),
+            "secondary_intents": secondary_intents,
+            "need_citation": need_citation,
+            "citation_mode": citation_mode,
+            "answer_should_include": answer_should_include,
+            "answer_requirements": {
+                "need_citation": need_citation,
+                "citation_mode": citation_mode,
+                "answer_should_include": answer_should_include,
+                "output_format": frame.get("output_format") or "answer",
+            },
+        }
 
     async def _understand_with_llm(
         self,
@@ -470,6 +637,15 @@ class QuestionUnderstandingAgent:
                 "skill_catalog": catalog,
                 "fixed_schema": {
                     "query_type": "one allowed query type",
+                    "primary_action": "lookup, analyze, summarize, locate, generate_report, or compare",
+                    "secondary_actions": "additional actions that must be preserved",
+                    "domain_objects": "financial statements, sections, or business objects",
+                    "evidence_modes": "table, source, or other required evidence shapes",
+                    "output_format": "answer, table, report, or short_report",
+                    "requirements": "answer constraints such as need_citation and length",
+                    "companies": "company names explicitly present in the question",
+                    "metrics": "normalized financial metrics explicitly requested",
+                    "routing_state": "ready, needs_clarification, or out_of_scope",
                     **(
                         {
                             "secondary_intents": "other allowed query types that the answer must also satisfy",
@@ -486,8 +662,9 @@ class QuestionUnderstandingAgent:
                     **{key: [] if key in {"years", "compare_targets"} else "" for key in SLOT_KEYS},
                 },
                 "instructions": (
-                    "Use the selected skill required slots. Do not invent unsupported slots; use empty strings or empty lists when absent. "
-                    "For compound questions, keep query_type as the primary answer task and put extra requirements in secondary_intents. "
+                    "Separate the user's action, domain objects, evidence requirements, and output format. "
+                    "Use the selected skill required slots. Do not invent companies, years, metrics, or other unsupported slots; use empty strings or empty lists when absent. "
+                    "For compound questions, keep query_type as the primary execution task and preserve extra requirements in secondary_intents and secondary_actions. "
                     "If the user asks for a value plus source/citation/page/origin, keep table_qa or fact_lookup as query_type, set need_citation=true, "
                     "set citation_mode=source_for_answer, and include source_snippet/page_or_location in answer_should_include."
                     if include_answer_requirements
@@ -518,7 +695,29 @@ class QuestionUnderstandingAgent:
         slots["__slot_fill_source__"] = "llm_combined"
         slots["__skill_name__"] = selected_skill.skill_name
         slots["__missing_required__"] = selected_skill.get_missing_slots(slots)
-        result = {"intent_trace": intent_trace, "query_type": query_type, "selected_skill": selected_skill, "slots": slots}
+        structured_frame = {
+            "primary_action": _clean_str(parsed.get("primary_action")) or QUERY_TYPE_TO_ACTION.get(query_type, ""),
+            "secondary_actions": _clean_list(parsed.get("secondary_actions")),
+            "domain_objects": _clean_list(parsed.get("domain_objects")),
+            "evidence_modes": _clean_list(parsed.get("evidence_modes")),
+            "output_format": _clean_str(parsed.get("output_format")) or "answer",
+            "requirements": dict(parsed.get("requirements") or {}) if isinstance(parsed.get("requirements"), Mapping) else {},
+            "slots": {
+                "companies": _clean_list(parsed.get("companies")),
+                "periods": _clean_list(parsed.get("years")),
+                "metrics": _clean_list(parsed.get("metrics")) or _clean_list(parsed.get("metric")),
+                "compare_targets": _clean_list(parsed.get("compare_targets")),
+            },
+            "routing_state": _clean_str(parsed.get("routing_state")) or "ready",
+            "field_evidence": [],
+        }
+        result = {
+            "intent_trace": intent_trace,
+            "query_type": query_type,
+            "selected_skill": selected_skill,
+            "slots": slots,
+            "structured_frame": structured_frame,
+        }
 
         if include_answer_requirements:
             secondary_intents: List[str] = []
@@ -537,6 +736,8 @@ class QuestionUnderstandingAgent:
                 answer_should_include = ["source_snippet", "page_or_location"]
                 if query_type == "table_qa":
                     answer_should_include = ["value", "unit", *answer_should_include]
+            structured_frame["requirements"]["need_citation"] = need_citation
+            structured_frame["requirements"]["citation_mode"] = citation_mode
             intent_trace["secondary_intents"] = secondary_intents
             intent_trace["need_citation"] = need_citation
             intent_trace["citation_mode"] = citation_mode
@@ -1033,4 +1234,3 @@ def merge_audit_and_rule_gate(rule_gate: Mapping[str, Any], audit: Mapping[str, 
     if audit_payload.get("missing_aspects"):
         merged.setdefault("missing_aspects", audit_payload["missing_aspects"])
     return merged
-

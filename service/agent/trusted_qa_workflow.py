@@ -21,6 +21,7 @@ from service.agent.query_expander import FIXED_QUERY_VARIANT_TOTAL, expand_queri
 from service.agent.query_planner import build_query_plan, is_decomposed_plan
 from service.agent.retrieval_scope import RetrievalScope, resolve_retrieval_scope
 from service.agent.skill_registry import DEFAULT_SKILL_REGISTRY
+from service.agent.structured_understanding import SemanticSkillRouter
 from service.embedding.embedding_service import EmbeddingService, build_embedding_provider_from_config
 from service.evaluation.ragas_evaluator import evaluate_qa_result
 from service.llm import get_llm_service
@@ -263,8 +264,13 @@ class TrustedQAWorkflow:
         self.company_registry = get_company_registry()
         self.intent_agent = IntentUnderstandingAgent(self.llm_service)
         self.slot_agent = SlotFillingAgent(self.llm_service)
-        self.understanding_agent = QuestionUnderstandingAgent(self.llm_service)
         self.embedding_service = EmbeddingService(provider=build_embedding_provider_from_config(self.config))
+        self.semantic_router = SemanticSkillRouter(self.embedding_service)
+        self.understanding_agent = QuestionUnderstandingAgent(
+            self.llm_service,
+            semantic_router=self.semantic_router,
+            company_registry=self.company_registry,
+        )
         self.retriever = HybridRetriever(
             ParallelQueryExecutor(
                 repository=get_runtime_repository(),
@@ -499,7 +505,10 @@ class TrustedQAWorkflow:
         for key, value in dict(plan.get("slots") or {}).items():
             if not planned_slots.get(key):
                 planned_slots[key] = value
+        planned_slots["query_plan"] = plan
         planned_intent = dict(intent_trace or {})
+        planned_intent.setdefault("semantic_query_type", str(intent_trace.get("query_type") or query_type))
+        planned_intent["execution_query_type"] = planned_query_type
         planned_intent["query_type"] = planned_query_type
         planned_intent["planning_mode"] = "decomposed"
         planned_intent["query_plan"] = plan
@@ -565,8 +574,17 @@ class TrustedQAWorkflow:
             "message": scope.refuse_message or "当前文档集中没有该范围对应的年报证据，不能使用其他范围的数据替代回答。",
             "retrieval_scope": scope.as_dict(),
             "unavailable_years": list(scope.unavailable_years),
+            "unsupported_companies": list(scope.unsupported_companies),
             "confidence": 0.0,
         }
+
+    @staticmethod
+    def _build_answer_scope(scope: Mapping[str, Any] | None, slots: Mapping[str, Any]) -> Dict[str, Any]:
+        payload = dict(scope or {})
+        payload["output_format"] = str(slots.get("output_format") or "answer")
+        payload["answer_requirements"] = dict(slots.get("requirements") or {})
+        payload["evidence_modes"] = list(slots.get("evidence_modes") or [])
+        return payload
 
     @staticmethod
     def _annotate_subtask_evidence(
@@ -1558,19 +1576,13 @@ class TrustedQAWorkflow:
         query_type = str(state.get("query_type") or "fact_lookup")
         expand_query_num = max(1, int(state.get("expand_query_num") or 3))
         retry_metadata_filter = gate.get("retry_metadata_filter") if isinstance(gate.get("retry_metadata_filter"), Mapping) else (state.get("metadata_filter") or {})
-        retry_expanded, retry_llm_expanded, retry_llm_expansion_used = await self._expand_queries_for_retrieval(
-            retry_question,
-            query_type,
-            expand_query_num,
-        )
-        retry_result = await self.retriever.retrieve(
+        retry_result, retry_expanded, retry_llm_expanded, retry_llm_expansion_used, retry_stage = await self._retrieve_with_cache_aware_expansion(
             question=retry_question,
             collection_name=str(state.get("collection_name") or "default"),
             top_k=max(1, int(state.get("top_k") or 5)),
             query_type=query_type,
             expand_query_num=expand_query_num,
             enable_cache=False,
-            expanded_queries=retry_expanded,
             metadata_filter=retry_metadata_filter,
         )
         evidence = list(retry_result.get("evidence") or state.get("evidence") or [])
@@ -1585,7 +1597,7 @@ class TrustedQAWorkflow:
             table_evidence_quota=self.table_evidence_quota,
         )
         observations = list(state.get("observations") or [])
-        observations.append({"phase": "retry_retrieval", "retry_count": retry_count, "retry_question": retry_question, "expanded_queries": retry_expanded, "audit": gate.get("evidence_audit") or {}, "rule_gate": gate.get("rule_gate") or {}, "gate": gate, "evidence_count": len(evidence), "duration_ms": _duration_ms(started_at)})
+        observations.append({"phase": "retry_retrieval", "retry_count": retry_count, "retry_question": retry_question, "expanded_queries": retry_expanded, "planning_mode": retry_stage.get("planning_mode", ""), "audit": gate.get("evidence_audit") or {}, "rule_gate": gate.get("rule_gate") or {}, "gate": gate, "evidence_count": len(evidence), "duration_ms": _duration_ms(started_at)})
         next_state = dict(state)
         next_state.update(
             {
@@ -1623,7 +1635,11 @@ class TrustedQAWorkflow:
         if decision not in {"answer", "clarify", "refuse"}:
             decision = "refuse"
         slots = dict(state.get("slots") or {})
-        answer_scope = state.get("retrieval_scope") if isinstance(state.get("retrieval_scope"), Mapping) else slots.get("retrieval_scope")
+        raw_answer_scope = state.get("retrieval_scope") if isinstance(state.get("retrieval_scope"), Mapping) else slots.get("retrieval_scope")
+        answer_scope = self._build_answer_scope(
+            raw_answer_scope if isinstance(raw_answer_scope, Mapping) else None,
+            slots,
+        )
         answer_payload = self.answer_generator.generate(
             question=question,
             query_type=query_type,
@@ -2152,23 +2168,17 @@ class TrustedQAWorkflow:
             retry_count += 1
             retry_question = str(gate.get("suggested_retry_query") or "").strip() or effective_question
             retry_metadata_filter = gate.get("retry_metadata_filter") if isinstance(gate.get("retry_metadata_filter"), Mapping) else metadata_filter
-            retry_expanded, retry_llm_expanded, retry_llm_expansion_used = await self._expand_queries_for_retrieval(
-                retry_question,
-                query_type,
-                expand_query_num,
-            )
-            llm_expansion_used = llm_expansion_used or retry_llm_expansion_used
-            expanded = retry_expanded
-            retry_result = await self.retriever.retrieve(
+            retry_result, retry_expanded, retry_llm_expanded, retry_llm_expansion_used, retry_stage = await self._retrieve_with_cache_aware_expansion(
                 question=retry_question,
                 collection_name=collection_name,
                 top_k=max(1, int(top_k)),
                 query_type=query_type,
                 expand_query_num=max(1, int(expand_query_num)),
                 enable_cache=False,
-                expanded_queries=retry_expanded,
                 metadata_filter=retry_metadata_filter,
             )
+            llm_expansion_used = llm_expansion_used or retry_llm_expansion_used
+            expanded = retry_expanded
             evidence = list(retry_result.get("evidence") or evidence)
             retrieval_result = retry_result
             gate = await self.evidence_decision.evaluate(
@@ -2181,7 +2191,7 @@ class TrustedQAWorkflow:
                 retry_count=retry_count,
                 table_evidence_quota=self.table_evidence_quota,
             )
-            retry_observation = {"phase": "retry_retrieval", "retry_count": retry_count, "retry_question": retry_question, "expanded_queries": retry_expanded, "llm_expanded": retry_llm_expanded, "audit": gate.get("evidence_audit") or {}, "rule_gate": gate.get("rule_gate") or {}, "gate": gate, "evidence_count": len(evidence), "duration_ms": _duration_ms(retry_started_at)}
+            retry_observation = {"phase": "retry_retrieval", "retry_count": retry_count, "retry_question": retry_question, "expanded_queries": retry_expanded, "llm_expanded": retry_llm_expanded, "planning_mode": retry_stage.get("planning_mode", ""), "audit": gate.get("evidence_audit") or {}, "rule_gate": gate.get("rule_gate") or {}, "gate": gate, "evidence_count": len(evidence), "duration_ms": _duration_ms(retry_started_at)}
             observations.append(retry_observation)
             await _emit_progress_stage(progress_callback, retry_observation)
 
@@ -2196,7 +2206,10 @@ class TrustedQAWorkflow:
 
         answer_started_at = time.perf_counter()
         await _emit_progress_marker(progress_callback, "answer_generation")
-        answer_scope = slots.get("retrieval_scope") if isinstance(slots.get("retrieval_scope"), Mapping) else None
+        answer_scope = self._build_answer_scope(
+            slots.get("retrieval_scope") if isinstance(slots.get("retrieval_scope"), Mapping) else None,
+            slots,
+        )
         answer_payload = self.answer_generator.generate(
             question=effective_question,
             query_type=query_type,

@@ -62,6 +62,18 @@ class CompanyRegistry:
         return CompanyProfile(company_id=company_id, company_name=company_name, aliases=tuple(aliases))
 
     def resolve(self, company_id: str = "", company_name: str = "") -> CompanyProfile | None:
+        known = self.resolve_known(company_id=company_id, company_name=company_name)
+        if known is not None:
+            return known
+        name = _clean(company_name)
+        if not name:
+            return None
+        generated_id = _normalize_company_id(name)
+        if generated_id:
+            return CompanyProfile(company_id=generated_id, company_name=name)
+        return None
+
+    def resolve_known(self, company_id: str = "", company_name: str = "") -> CompanyProfile | None:
         key = _clean(company_id)
         if key and key in self._profiles:
             return self._profiles[key]
@@ -71,18 +83,23 @@ class CompanyRegistry:
         for profile in self._profiles.values():
             if name == profile.company_name or name in profile.aliases:
                 return profile
-        generated_id = _normalize_company_id(name)
-        if generated_id:
-            return CompanyProfile(company_id=generated_id, company_name=name)
         return None
 
     def list_profiles(self) -> List[CompanyProfile]:
         return sorted(self._profiles.values(), key=lambda profile: profile.company_id)
 
     def match_question(self, question: str, document_scopes: Iterable[Mapping[str, Any]] | None = None) -> CompanyProfile | None:
+        matches = self.match_all(question, document_scopes)
+        return matches[0] if matches else None
+
+    def match_all(
+        self,
+        question: str,
+        document_scopes: Iterable[Mapping[str, Any]] | None = None,
+    ) -> List[CompanyProfile]:
         text = _clean(question)
         if not text:
-            return None
+            return []
         candidates: Dict[str, CompanyProfile] = dict(self._profiles)
         for item in document_scopes or []:
             profile = self._profile_from_mapping(item)
@@ -95,9 +112,9 @@ class CompanyRegistry:
             if best:
                 matches.append((best, profile))
         if not matches:
-            return None
+            return []
         matches.sort(key=lambda item: item[0], reverse=True)
-        return matches[0][1]
+        return [profile for _length, profile in matches]
 
 
 _DEFAULT_REGISTRY: CompanyRegistry | None = None
