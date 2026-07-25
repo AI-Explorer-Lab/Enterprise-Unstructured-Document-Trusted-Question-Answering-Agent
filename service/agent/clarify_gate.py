@@ -68,27 +68,22 @@ def extract_slots(question: str, query_type: str) -> Dict[str, Any]:
     slots: Dict[str, Any] = {
         "years": years,
         "metric": "、".join(metrics) if metrics else "",
-        "period": years[0] if years else ("报告期" if query_type == "table_qa" and metrics else ""),
+        "period": years[0] if years else ("报告期" if query_type in {"information_extraction", "metric_calculation"} and metrics else ""),
         "target_statement": quoted[0] if quoted else "",
         "compare_targets": compare_targets,
         "scope": scope,
     }
-
-    # citation locate can treat non-empty plain question as target statement fallback
-    if query_type == "citation_locate" and not slots["target_statement"] and len(text) >= 10:
-        slots["target_statement"] = text
 
     return slots
 
 
 def required_slots_for_query_type(query_type: str) -> List[str]:
     mapping = {
-        "fact_lookup": [],
-        "table_qa": ["metric", "period"],
+        "information_extraction": [],
+        "metric_calculation": ["metric"],
+        "comparison": ["compare_targets"],
+        "analysis": ["scope"],
         "summarization": ["scope"],
-        "citation_locate": ["target_statement"],
-        "report_generation": ["scope"],
-        "multi_doc_compare": ["compare_targets"],
         "ambiguous_query": ["scope"],
     }
     return list(mapping.get(query_type, []))
@@ -116,6 +111,7 @@ def build_clarify_question(query_type: str, missing_slots: List[str]) -> str:
         "target_statement": "要定位的原文句子或主题",
         "compare_targets": "至少两个要对比的文档或对象",
         "scope": "文档范围或主题",
+        "primary_intent": "一个明确的主要任务（提取、计算、比较、分析或总结）",
     }
     missing_labels = [slot_map.get(slot, slot) for slot in missing_slots]
     if query_type == "ambiguous_query":

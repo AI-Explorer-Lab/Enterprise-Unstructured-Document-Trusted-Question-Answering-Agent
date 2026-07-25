@@ -41,20 +41,19 @@ DEFAULT_CONFIG: dict[str, Any] = {
         "orchestration": "trusted_qa_workflow",
         "max_iterations": 6,
         "skill_trace_enabled": True,
-        "default_skill": "fact_lookup",
+        "default_skill": "information_extraction",
         "use_llm_intent_slot": False,
     },
     "skills": {
         "enabled": [
-            "fact_lookup",
-            "table_qa",
-            "citation_locate",
+            "information_extraction",
+            "metric_calculation",
+            "comparison",
+            "analysis",
             "summarization",
-            "report_generation",
-            "multi_doc_compare",
         ],
         "clarify_before_skill": True,
-        "fallback_skill": "fact_lookup",
+        "fallback_skill": "information_extraction",
     },
     "embedding": {
         "provider": "qwen",
@@ -423,4 +422,3 @@ def get_app_config(reload: bool = False) -> dict[str, Any]:
     if reload:
         _cached_app_config.cache_clear()
     return copy.deepcopy(_cached_app_config())
-

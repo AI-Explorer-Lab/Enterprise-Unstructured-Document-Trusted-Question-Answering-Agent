@@ -29,7 +29,7 @@ class HybridRetriever:
         question: str,
         collection_name: str,
         top_k: int,
-        query_type: str = "fact_lookup",
+        query_type: str = "information_extraction",
         metadata_filter: Mapping[str, Any] | None = None,
     ) -> Dict[str, Any] | None:
         candidate_pool_size = max(1, int(getattr(self.reranker, "cross_encoder_candidate_pool", 30) or 30))
@@ -47,7 +47,7 @@ class HybridRetriever:
         question: str,
         collection_name: str,
         top_k: int,
-        query_type: str = "fact_lookup",
+        query_type: str = "information_extraction",
         expand_query_num: int = 3,
         enable_cache: bool = True,
         expanded_queries: Sequence[str] | None = None,
@@ -94,7 +94,7 @@ class HybridRetriever:
         question: str,
         collection_name: str,
         top_k: int,
-        query_type: str = "fact_lookup",
+        query_type: str = "information_extraction",
         expand_query_num: int = 3,
         enable_cache: bool = True,
         expanded_queries: Sequence[str] | None = None,

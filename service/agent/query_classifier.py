@@ -5,6 +5,89 @@ import re
 from service.agent.schemas import normalize_query_type
 from utils.content_normalizer import normalize_whitespace
 
+_INFORMATION_EXTRACTION_KEYWORDS = {
+    "中文名称",
+    "中文简称",
+    "法定代表人",
+    "注册地址",
+    "办公地址",
+    "公司网址",
+    "电子信箱",
+    "股票简称",
+    "股票代码",
+    "上市板块",
+    "是多少",
+    "是什么",
+    "多少",
+    "查询",
+    "查一下",
+    "告诉我",
+    "extract",
+    "lookup",
+}
+
+_CALCULATION_KEYWORDS = {
+    "计算",
+    "算一下",
+    "算出",
+    "增长率",
+    "增幅",
+    "下降幅度",
+    "增长了多少",
+    "下降了多少",
+    "增加了多少",
+    "减少了多少",
+    "差额",
+    "calculate",
+    "calculation",
+}
+
+_COMPARE_KEYWORDS = {
+    "对比",
+    "比较",
+    "相比",
+    "差异",
+    "差距",
+    "区别",
+    "谁更",
+    "哪个更",
+    "哪家更",
+    "versus",
+    "vs",
+    "compare",
+}
+
+_ANALYSIS_KEYWORDS = {
+    "分析",
+    "解读",
+    "原因",
+    "为什么",
+    "影响",
+    "意味着什么",
+    "说明什么",
+    "能看出什么",
+    "趋势",
+    "怎么看",
+    "评价",
+    "判断",
+    "analyze",
+    "analysis",
+    "explain",
+    "why",
+}
+
+_SUMMARY_KEYWORDS = {
+    "总结",
+    "概述",
+    "摘要",
+    "归纳",
+    "概括",
+    "梳理",
+    "overview",
+    "summary",
+    "summarize",
+}
+
 _TABLE_KEYWORDS = {
     "表格",
     "指标",
@@ -25,58 +108,6 @@ _TABLE_KEYWORDS = {
     "参数",
     "table",
     "metric",
-}
-
-_FACT_LOOKUP_KEYWORDS = {
-    "中文名称",
-    "中文简称",
-    "法定代表人",
-    "注册地址",
-    "办公地址",
-    "公司网址",
-    "电子信箱",
-    "股票简称",
-    "股票代码",
-    "上市板块",
-}
-
-_SUMMARY_KEYWORDS = {
-    "总结",
-    "概述",
-    "摘要",
-    "归纳",
-    "overview",
-    "summary",
-}
-
-_CITATION_KEYWORDS = {
-    "出处",
-    "原文",
-    "哪一页",
-    "页码",
-    "引用",
-    "citation",
-    "source",
-    "locate",
-}
-
-_REPORT_KEYWORDS = {
-    "生成报告",
-    "撰写报告",
-    "输出报告",
-    "形成报告",
-    "分析报告",
-    "report",
-}
-
-_COMPARE_KEYWORDS = {
-    "对比",
-    "比较",
-    "差异",
-    "区别",
-    "versus",
-    "vs",
-    "compare",
 }
 
 _YEAR_RE = re.compile(r"(19|20)\d{2}")
@@ -126,6 +157,9 @@ _EXPLANATION_HINTS = {
     "为什么",
     "影响",
     "说明",
+    "意味着",
+    "分析",
+    "解读",
 }
 
 
@@ -134,6 +168,11 @@ def _contains_any(text: str, words: set[str]) -> bool:
 
 
 def is_financial_table_query(question: str) -> bool:
+    """Return whether the request needs table-shaped financial evidence.
+
+    This is an evidence-mode decision, not an intent classification.
+    """
+
     normalized = normalize_whitespace(question, preserve_newlines=False).lower()
     if not normalized:
         return False
@@ -147,35 +186,44 @@ def is_financial_table_query(question: str) -> bool:
     return has_metric and has_value_intent
 
 
+def _strong_intent_signals(normalized: str) -> list[str]:
+    signals: list[str] = []
+    for query_type, keywords in (
+        ("metric_calculation", _CALCULATION_KEYWORDS),
+        ("comparison", _COMPARE_KEYWORDS),
+        ("analysis", _ANALYSIS_KEYWORDS),
+        ("summarization", _SUMMARY_KEYWORDS),
+    ):
+        if _contains_any(normalized, keywords):
+            signals.append(query_type)
+    # A request for a derived numeric result can mention the two scopes being
+    # compared. Its terminal answer is still a calculation, not a qualitative
+    # comparison.
+    if "metric_calculation" in signals and "comparison" in signals:
+        signals.remove("comparison")
+    return signals
+
+
 def classify_query_type(question: str) -> str:
+    """Classify one annual-report question into exactly one primary intent.
+
+    Compound requests with multiple strong actions are intentionally returned as
+    ambiguous during the single-intent phase instead of silently dropping an
+    action through fixed precedence.
+    """
+
     normalized = normalize_whitespace(question, preserve_newlines=False).lower()
-    if not normalized:
+    if not normalized or len(normalized) <= 4:
         return "ambiguous_query"
 
-    # Very short or deictic prompts are usually underspecified.
-    if len(normalized) <= 4:
+    signals = _strong_intent_signals(normalized)
+    if len(signals) > 1:
         return "ambiguous_query"
-
-    if _contains_any(normalized, _COMPARE_KEYWORDS):
-        return "multi_doc_compare"
-
-    if _contains_any(normalized, _REPORT_KEYWORDS):
-        return "report_generation"
-
-    if _contains_any(normalized, _CITATION_KEYWORDS):
-        return "citation_locate"
-
-    if _contains_any(normalized, _FACT_LOOKUP_KEYWORDS):
-        return "fact_lookup"
-
-    if is_financial_table_query(normalized):
-        return "table_qa"
-
-    if _contains_any(normalized, _SUMMARY_KEYWORDS):
-        return "summarization"
+    if signals:
+        return signals[0]
 
     if "这个" in normalized or "那个" in normalized:
         if not _YEAR_RE.search(normalized):
             return "ambiguous_query"
 
-    return normalize_query_type("fact_lookup")
+    return normalize_query_type("information_extraction")

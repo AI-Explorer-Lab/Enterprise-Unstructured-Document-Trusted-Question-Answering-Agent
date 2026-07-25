@@ -188,9 +188,8 @@ def load_all_skills(skill_dir: str | Path | None = None) -> Tuple[SkillDefinitio
 ALL_SKILLS = load_all_skills()
 _SKILLS_BY_NAME = {skill.skill_name: skill for skill in ALL_SKILLS}
 
-FactLookupSkill = _SKILLS_BY_NAME["FactLookupSkill"]
-TableQASkill = _SKILLS_BY_NAME["TableQASkill"]
-CitationLocateSkill = _SKILLS_BY_NAME["CitationLocateSkill"]
+InformationExtractionSkill = _SKILLS_BY_NAME["InformationExtractionSkill"]
+MetricCalculationSkill = _SKILLS_BY_NAME["MetricCalculationSkill"]
+ComparisonSkill = _SKILLS_BY_NAME["ComparisonSkill"]
+AnalysisSkill = _SKILLS_BY_NAME["AnalysisSkill"]
 SummarizationSkill = _SKILLS_BY_NAME["SummarizationSkill"]
-ReportGenerationSkill = _SKILLS_BY_NAME["ReportGenerationSkill"]
-MultiDocCompareSkill = _SKILLS_BY_NAME["MultiDocCompareSkill"]

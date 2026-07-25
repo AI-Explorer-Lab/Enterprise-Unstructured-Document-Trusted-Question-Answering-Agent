@@ -11,13 +11,13 @@ from utils.content_normalizer import normalize_whitespace
 DEFAULT_DOMAIN_GLOSSARY_PATH = PROJECT_ROOT / "config" / "domain_glossary.yaml"
 
 
-def build_query_plan(question: str, query_type: str = "fact_lookup") -> Dict[str, Any]:
+def build_query_plan(question: str, query_type: str = "information_extraction") -> Dict[str, Any]:
     normalized = normalize_whitespace(question, preserve_newlines=False)
     match = _match_composite(normalized)
     if match is None:
         return {
             "mode": "single",
-            "query_type": str(query_type or "fact_lookup"),
+            "query_type": str(query_type or "information_extraction"),
             "question": normalized,
             "subtasks": [],
         }
@@ -44,7 +44,7 @@ def build_query_plan(question: str, query_type: str = "fact_lookup") -> Dict[str
             composite.get("reason")
             or "The question asks for multiple domain objects that should not compete in one retrieval pool."
         ),
-        "query_type": str(composite.get("query_type") or query_type or "fact_lookup"),
+        "query_type": str(composite.get("query_type") or query_type or "information_extraction"),
         "question": normalized,
         "slots": slots,
         "subtasks": subtasks,

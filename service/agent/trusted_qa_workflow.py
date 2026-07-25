@@ -52,7 +52,7 @@ def _env_truthy(name: str, default: bool = False) -> bool:
 
 def _query_expander_for_executor(question: str, expand_query_num: int) -> List[str]:
     del expand_query_num
-    return expand_queries(question, "fact_lookup", FIXED_QUERY_VARIANT_TOTAL)[1:]
+    return expand_queries(question, "information_extraction", FIXED_QUERY_VARIANT_TOTAL)[1:]
 
 
 def _fixed_query_variants(question: str, query_type: str, candidates: List[str] | None) -> List[str]:
@@ -134,10 +134,10 @@ def _should_use_year_scoped_retrieval(question: str, query_type: str, metadata_f
     years = _metadata_filter_years(metadata_filter)
     if len(years) <= 1:
         return False
-    if query_type in {"table_qa", "multi_doc_compare"}:
+    if query_type in {"metric_calculation", "comparison"}:
         return True
     text = str(question or "")
-    return query_type in {"fact_lookup", "summarization", "report_generation"} and any(
+    return query_type in {"information_extraction", "analysis", "summarization"} and any(
         term in text for term in ("近三年", "近两年", "历年", "这几年", "趋势", "变化", "对比", "比较", "逐年", "分别")
     )
 
@@ -333,7 +333,7 @@ class TrustedQAWorkflow:
 
     @staticmethod
     def _query_expansion_cache_key(question: str, query_type: str, expand_query_num: int) -> tuple[str, str, int]:
-        return (str(question or "").strip(), str(query_type or "fact_lookup").strip(), max(1, int(expand_query_num)))
+        return (str(question or "").strip(), str(query_type or "information_extraction").strip(), max(1, int(expand_query_num)))
 
     def _get_cached_query_expansion(self, question: str, query_type: str, expand_query_num: int) -> tuple[List[str], List[str]] | None:
         if not self.query_expansion_cache_enabled:
@@ -396,7 +396,7 @@ class TrustedQAWorkflow:
         payload = {
             "version": "grounded-answer-v2-scope",
             "question": str(question or "").strip(),
-            "query_type": str(query_type or "fact_lookup"),
+            "query_type": str(query_type or "information_extraction"),
             "provider": str(getattr(self.llm_service, "provider_name", "")),
             "model": str(getattr(self.llm_service, "model", "")),
             "scope": dict(scope or {}),
@@ -446,7 +446,7 @@ class TrustedQAWorkflow:
             "version": "qa-response-v1",
             "question": str(question or "").strip(),
             "collection_name": str(collection_name or "default"),
-            "query_type": str(query_type or "fact_lookup"),
+            "query_type": str(query_type or "information_extraction"),
             "top_k": max(1, int(top_k)),
             "expand_query_num": max(1, int(expand_query_num)),
             "provider": str(getattr(self.llm_service, "provider_name", "")),
@@ -500,7 +500,7 @@ class TrustedQAWorkflow:
         if not is_decomposed_plan(plan):
             return plan, query_type, slots, intent_trace
 
-        planned_query_type = str(plan.get("query_type") or query_type or "fact_lookup")
+        planned_query_type = str(plan.get("query_type") or query_type or "information_extraction")
         planned_slots = dict(slots or {})
         for key, value in dict(plan.get("slots") or {}).items():
             if not planned_slots.get(key):
@@ -675,7 +675,7 @@ class TrustedQAWorkflow:
         async def run_subtask(index: int, subtask: Dict[str, Any]) -> Dict[str, Any]:
             async with semaphore:
                 subtask_question = str(subtask.get("question") or subtask.get("display_name") or "").strip()
-                subtask_query_type = str(subtask.get("query_type") or plan.get("query_type") or "fact_lookup")
+                subtask_query_type = str(subtask.get("query_type") or plan.get("query_type") or "information_extraction")
                 expanded, llm_expanded, llm_used = await self._expand_queries_for_retrieval(
                     subtask_question,
                     subtask_query_type,
@@ -722,7 +722,7 @@ class TrustedQAWorkflow:
 
         retrieval_trace = {
             "collection_name": collection_name,
-            "query_type": str(plan.get("query_type") or "fact_lookup"),
+            "query_type": str(plan.get("query_type") or "information_extraction"),
             "planning_mode": "decomposed",
             "query_plan": plan,
             "metadata_filter": dict(metadata_filter or {}),
@@ -768,7 +768,7 @@ class TrustedQAWorkflow:
             ],
         }
         retrieval_result = {
-            "query_type": str(plan.get("query_type") or "fact_lookup"),
+            "query_type": str(plan.get("query_type") or "information_extraction"),
             "evidence": evidence,
             "candidates": evidence,
             "retrieval_trace": retrieval_trace,
@@ -948,7 +948,7 @@ class TrustedQAWorkflow:
 
         retrieval_trace = {
             "collection_name": collection_name,
-            "query_type": str(plan.get("query_type") or "fact_lookup"),
+            "query_type": str(plan.get("query_type") or "information_extraction"),
             "planning_mode": "year_scoped_decomposed",
             "query_plan": plan,
             "metadata_filter": dict(metadata_filter or {}),
@@ -996,7 +996,7 @@ class TrustedQAWorkflow:
             ],
         }
         retrieval_result = {
-            "query_type": str(plan.get("query_type") or "fact_lookup"),
+            "query_type": str(plan.get("query_type") or "information_extraction"),
             "evidence": evidence,
             "candidates": evidence,
             "retrieval_trace": retrieval_trace,
@@ -1291,6 +1291,8 @@ class TrustedQAWorkflow:
         selected_skill: Any,
     ) -> Dict[str, Any]:
         missing_slots = selected_skill.get_missing_slots(slots) if selected_skill is not None else []
+        if query_type == "ambiguous_query" and "primary_intent" not in missing_slots:
+            missing_slots.append("primary_intent")
         if not str(collection_name or "").strip():
             missing_slots.append("collection_name")
         return {
@@ -1415,7 +1417,7 @@ class TrustedQAWorkflow:
             use_llm_intent_slot=bool(state.get("use_llm_intent_slot", False)),
         )
         intent_trace = dict(understanding.get("intent_trace") or {})
-        query_type = str(understanding.get("query_type") or intent_trace.get("query_type") or "fact_lookup")
+        query_type = str(understanding.get("query_type") or intent_trace.get("query_type") or "information_extraction")
         intent_duration_ms = _duration_ms(started_at)
         skill_started_at = time.perf_counter()
         slots = dict(understanding.get("slots") or {})
@@ -1440,7 +1442,7 @@ class TrustedQAWorkflow:
 
     async def _graph_run_clarify_gate(self, state: Dict[str, Any]) -> Dict[str, Any]:
         started_at = time.perf_counter()
-        query_type = str(state.get("query_type") or "fact_lookup")
+        query_type = str(state.get("query_type") or "information_extraction")
         collection_name = str(state.get("collection_name") or "default")
         slots = dict(state.get("slots") or {})
         selected_skill = state.get("selected_skill")
@@ -1494,7 +1496,7 @@ class TrustedQAWorkflow:
     async def _graph_build_clarify_response(self, state: Dict[str, Any]) -> Dict[str, Any]:
         started_at = time.perf_counter()
         question = str(state.get("effective_question") or state.get("question") or "")
-        query_type = str(state.get("query_type") or "fact_lookup")
+        query_type = str(state.get("query_type") or "information_extraction")
         clarify = dict(state.get("clarify") or {})
         answer_payload = self.answer_generator.generate(question=question, query_type=query_type, evidence=[], decision="clarify", gate_reason="missing_slots")
         response = self._build_response(
@@ -1516,7 +1518,7 @@ class TrustedQAWorkflow:
         return next_state
     async def _graph_retrieve_evidence(self, state: Dict[str, Any]) -> Dict[str, Any]:
         question = str(state.get("effective_question") or state.get("question") or "")
-        query_type = str(state.get("query_type") or "fact_lookup")
+        query_type = str(state.get("query_type") or "information_extraction")
         expand_query_num = int(state.get("expand_query_num") or 3)
         retrieval_result, expanded, llm_expanded, llm_expansion_used, retrieval_stage = await self._retrieve_with_cache_aware_expansion(
             question=question,
@@ -1547,7 +1549,7 @@ class TrustedQAWorkflow:
         started_at = time.perf_counter()
         gate = await self.evidence_decision.evaluate(
             question=str(state.get("effective_question") or state.get("question") or ""),
-            query_type=str(state.get("query_type") or "fact_lookup"),
+            query_type=str(state.get("query_type") or "information_extraction"),
             slots=state.get("slots") or {},
             selected_skill=str(getattr(state.get("selected_skill"), "skill_name", "")),
             evidence=list(state.get("evidence") or []),
@@ -1573,7 +1575,7 @@ class TrustedQAWorkflow:
         retry_count = int(state.get("retry_count") or 0) + 1
         gate = dict(state.get("gate") or {})
         retry_question = str(gate.get("suggested_retry_query") or "").strip() or str(state.get("effective_question") or state.get("question") or "")
-        query_type = str(state.get("query_type") or "fact_lookup")
+        query_type = str(state.get("query_type") or "information_extraction")
         expand_query_num = max(1, int(state.get("expand_query_num") or 3))
         retry_metadata_filter = gate.get("retry_metadata_filter") if isinstance(gate.get("retry_metadata_filter"), Mapping) else (state.get("metadata_filter") or {})
         retry_result, retry_expanded, retry_llm_expanded, retry_llm_expansion_used, retry_stage = await self._retrieve_with_cache_aware_expansion(
@@ -1624,7 +1626,7 @@ class TrustedQAWorkflow:
     async def _graph_build_answer_response(self, state: Dict[str, Any]) -> Dict[str, Any]:
         started_at = time.perf_counter()
         question = str(state.get("effective_question") or state.get("question") or "")
-        query_type = str(state.get("query_type") or "fact_lookup")
+        query_type = str(state.get("query_type") or "information_extraction")
         gate = dict(state.get("gate") or {})
         evidence = list(state.get("evidence") or [])
         decision = gate.get("decision", "refuse")
@@ -1739,7 +1741,7 @@ class TrustedQAWorkflow:
         await self._update_conversation_focus(
             session_id=str(state.get("sid") or ""),
             effective_question=str(state.get("effective_question") or state.get("question") or ""),
-            query_type=str(response.get("query_type") or state.get("query_type") or "fact_lookup"),
+            query_type=str(response.get("query_type") or state.get("query_type") or "information_extraction"),
             slots=state.get("slots") or {},
             response=response,
             conversation_state=state.get("conversation_state") or {},
@@ -1895,7 +1897,7 @@ class TrustedQAWorkflow:
         )
         intent_duration_ms = _duration_ms(intent_started_at)
         intent_trace = dict(understanding.get("intent_trace") or {})
-        query_type = str(understanding.get("query_type") or intent_trace.get("query_type") or "fact_lookup")
+        query_type = str(understanding.get("query_type") or intent_trace.get("query_type") or "information_extraction")
         slots = dict(understanding.get("slots") or {})
         _plan, query_type, slots, intent_trace = self._apply_query_plan(effective_question, query_type, slots, intent_trace)
         observations.append({"phase": "intent_slot_understanding_agent", "intent": intent_trace, "slots": slots, "duration_ms": intent_duration_ms})

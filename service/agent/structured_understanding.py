@@ -15,30 +15,27 @@ from utils.content_normalizer import normalize_whitespace
 DEFAULT_INTENT_ROUTER_PATH = PROJECT_ROOT / "config" / "intent_router.yaml"
 
 ACTION_TO_QUERY_TYPE = {
-    "lookup": "fact_lookup",
-    "analyze": "table_qa",
+    "extract": "information_extraction",
+    "calculate": "metric_calculation",
+    "compare": "comparison",
+    "analyze": "analysis",
     "summarize": "summarization",
-    "locate": "citation_locate",
-    "generate_report": "report_generation",
-    "compare": "multi_doc_compare",
 }
 
 QUERY_TYPE_TO_ACTION = {
-    "fact_lookup": "lookup",
-    "table_qa": "lookup",
+    "information_extraction": "extract",
+    "metric_calculation": "calculate",
+    "comparison": "compare",
+    "analysis": "analyze",
     "summarization": "summarize",
-    "citation_locate": "locate",
-    "report_generation": "generate_report",
-    "multi_doc_compare": "compare",
 }
 
 ACTION_TERMS: Dict[str, tuple[str, ...]] = {
     "compare": ("对比", "比较", "相比", "差异", "差距", "区别", "谁更", "哪个更", "vs", "versus"),
-    "analyze": ("分析", "解读", "怎么看", "说明什么", "能看出什么"),
+    "calculate": ("计算", "算一下", "算出", "增长率", "增幅", "下降幅度", "差额", "增长了多少", "下降了多少", "增加了多少", "减少了多少"),
+    "analyze": ("分析", "解读", "原因", "为什么", "影响", "怎么看", "说明什么", "意味着什么", "能看出什么", "趋势"),
     "summarize": ("总结", "概述", "概括", "归纳", "梳理"),
-    "locate": ("定位原文", "查找原文", "原文在哪", "在哪一页", "哪一页提到", "找到原文"),
-    "generate_report": ("生成报告", "撰写报告", "输出报告", "形成报告", "整理成报告"),
-    "lookup": ("查一下", "查询", "告诉我", "是多少", "是什么", "多少"),
+    "extract": ("查一下", "查询", "告诉我", "是多少", "是什么", "多少", "原文在哪", "在哪一页", "哪一页提到", "找到原文"),
 }
 
 CITATION_REQUIREMENT_TERMS = (
@@ -127,20 +124,25 @@ def _field_evidence(field: str, value: Any, source_text: str, text: str, method:
     }
 
 
-def _primary_action(actions: Sequence[tuple[str, str, int]]) -> str:
+def _resolved_action_names(actions: Sequence[tuple[str, str, int]]) -> set[str]:
     action_names = {item[0] for item in actions}
-    if "compare" in action_names:
-        return "compare"
-    if "analyze" in action_names:
-        return "analyze"
-    if "summarize" in action_names:
-        return "summarize"
-    if "locate" in action_names:
-        return "locate"
-    if "lookup" in action_names:
-        return "lookup"
-    if "generate_report" in action_names:
-        return "generate_report"
+    # Extraction wording often accompanies a stronger single action, for
+    # example "分析……是什么" or "计算……是多少".
+    if len(action_names) > 1:
+        action_names.discard("extract")
+    # A derived numeric answer can compare periods or companies as inputs.
+    # Calculation is the terminal operation in that case.
+    if "calculate" in action_names and "compare" in action_names:
+        action_names.discard("compare")
+    return action_names
+
+
+def _primary_action(actions: Sequence[tuple[str, str, int]]) -> str:
+    action_names = _resolved_action_names(actions)
+    if len(action_names) == 1:
+        return next(iter(action_names))
+    # Multiple remaining actions are deliberately unresolved in the
+    # single-intent phase.
     return ""
 
 
@@ -220,20 +222,9 @@ class HardSignalExtractor:
                         "action_pattern",
                     )
                 )
-        if not any(item[0] == "generate_report" for item in matched_actions):
-            report_action_match = re.search(r"(?:生成|撰写|输出|形成|整理成).{0,8}报告", text)
-            if report_action_match:
-                matched_actions.append(("generate_report", report_action_match.group(0), report_action_match.start()))
-                evidence.append(
-                    _field_evidence(
-                        "action",
-                        "generate_report",
-                        report_action_match.group(0),
-                        text,
-                        "action_pattern",
-                    )
-                )
         matched_actions.sort(key=lambda item: item[2])
+        action_names = _resolved_action_names(matched_actions)
+        has_action_conflict = len(action_names) > 1
         primary_action = _primary_action(matched_actions)
 
         metrics: List[str] = []
@@ -261,6 +252,13 @@ class HardSignalExtractor:
         periods = _unique(_YEAR_RE.findall(text))
         for period in periods:
             evidence.append(_field_evidence("periods", period, period, text, "year_pattern"))
+        if primary_action == "compare" and len(compare_targets) < 2:
+            if len(companies) >= 2:
+                compare_targets = list(companies)
+            elif len(periods) >= 2:
+                compare_targets = list(periods)
+            elif len(_unique(metrics)) >= 2:
+                compare_targets = _unique(metrics)
 
         need_citation = next((term for term in CITATION_REQUIREMENT_TERMS if term.lower() in lowered), "")
         if not need_citation:
@@ -281,26 +279,17 @@ class HardSignalExtractor:
         else:
             output_format = "answer"
 
-        secondary_actions: List[str] = []
-        if report_term and primary_action != "generate_report":
-            secondary_actions.append("generate_report")
-        if need_citation and primary_action != "locate":
-            secondary_actions.append("locate_evidence")
-
         evidence_modes: List[str] = []
         if metrics or domain_objects:
             evidence_modes.append("table")
         if need_citation:
             evidence_modes.append("source")
 
-        if not primary_action and (metrics or domain_objects):
-            primary_action = "lookup"
-        if not primary_action and text:
-            primary_action = ""
+        if not primary_action and not has_action_conflict and (metrics or domain_objects):
+            primary_action = "extract"
 
         return {
             "primary_action": primary_action,
-            "secondary_actions": secondary_actions,
             "domain_objects": _unique(domain_objects),
             "evidence_modes": evidence_modes,
             "output_format": output_format,
@@ -315,7 +304,7 @@ class HardSignalExtractor:
                 "metrics": _unique(metrics),
                 "compare_targets": compare_targets,
             },
-            "routing_state": "ready" if primary_action else "needs_semantic_route",
+            "routing_state": "ambiguous_action" if has_action_conflict else ("ready" if primary_action else "needs_semantic_route"),
             "field_evidence": evidence,
         }
 
@@ -371,35 +360,40 @@ class SemanticSkillRouter:
         self.config = dict(config or load_intent_router_config())
         self.enabled = bool(self.config.get("enabled", True))
         self.top_k = max(1, int(self.config.get("top_k", 3)))
+        self.prototype_score_top_n = max(1, int(self.config.get("prototype_score_top_n", 3)))
         self.accept_threshold = float(self.config.get("accept_threshold", 0.58))
         self.reject_threshold = float(self.config.get("reject_threshold", 0.32))
         self.margin_threshold = float(self.config.get("margin_threshold", 0.08))
         self.llm_fallback_enabled = bool(self.config.get("llm_fallback_enabled", True))
         raw_prototypes = self.config.get("prototypes") if isinstance(self.config.get("prototypes"), Mapping) else {}
         self.prototype_texts = {
-            str(query_type): "；".join(_unique(examples if isinstance(examples, list) else [examples]))
+            str(query_type): _unique(examples if isinstance(examples, list) else [examples])
             for query_type, examples in raw_prototypes.items()
         }
-        self._prototype_vectors: Dict[str, List[float]] | None = None
+        self._prototype_vectors: Dict[str, List[List[float]]] | None = None
         self._prototype_lock = asyncio.Lock()
 
-    async def _load_prototype_vectors(self) -> Dict[str, List[float]]:
+    async def _load_prototype_vectors(self) -> Dict[str, List[List[float]]]:
         if self._prototype_vectors is not None:
             return self._prototype_vectors
         async with self._prototype_lock:
             if self._prototype_vectors is not None:
                 return self._prototype_vectors
-            query_types = list(self.prototype_texts)
+            prototype_items = [
+                (query_type, prototype)
+                for query_type, prototypes in self.prototype_texts.items()
+                for prototype in prototypes
+            ]
             vectors = await self.embedding_service.embed_texts(
-                [self.prototype_texts[query_type] for query_type in query_types],
+                [prototype for _, prototype in prototype_items],
                 use_cache=True,
                 chunk_text=False,
-                max_concurrency=max(1, len(query_types)),
+                max_concurrency=max(1, min(len(prototype_items), 16)),
             )
-            self._prototype_vectors = {
-                query_type: list(vector)
-                for query_type, vector in zip(query_types, vectors)
-            }
+            grouped: Dict[str, List[List[float]]] = {query_type: [] for query_type in self.prototype_texts}
+            for (query_type, _), vector in zip(prototype_items, vectors):
+                grouped[query_type].append(list(vector))
+            self._prototype_vectors = grouped
             return self._prototype_vectors
 
     async def route(self, question: str) -> SemanticRoute:
@@ -413,11 +407,8 @@ class SemanticSkillRouter:
         prototype_vectors, question_vector = await asyncio.gather(prototype_task, question_task)
         scored = sorted(
             (
-                {
-                    "query_type": query_type,
-                    "score": round(_cosine_similarity(question_vector, vector), 6),
-                }
-                for query_type, vector in prototype_vectors.items()
+                self._score_query_type(question_vector, query_type, vectors)
+                for query_type, vectors in prototype_vectors.items()
             ),
             key=lambda item: float(item["score"]),
             reverse=True,
@@ -441,16 +432,30 @@ class SemanticSkillRouter:
             provider=str(getattr(self.embedding_service, "provider_name", "unknown")),
         )
 
+    def _score_query_type(
+        self,
+        question_vector: Sequence[float],
+        query_type: str,
+        vectors: Sequence[Sequence[float]],
+    ) -> Dict[str, Any]:
+        similarities = sorted(
+            (_cosine_similarity(question_vector, vector) for vector in vectors),
+            reverse=True,
+        )
+        neighbor_count = min(self.prototype_score_top_n, len(similarities))
+        nearest = similarities[:neighbor_count]
+        score = sum(nearest) / neighbor_count if neighbor_count else 0.0
+        return {
+            "query_type": query_type,
+            "score": round(score, 6),
+            "matched_prototype_count": neighbor_count,
+        }
+
 
 def query_type_from_frame(frame: Mapping[str, Any], semantic_route: Mapping[str, Any] | None = None) -> str:
+    if _clean(frame.get("routing_state")) == "ambiguous_action":
+        return "ambiguous_query"
     action = _clean(frame.get("primary_action"))
-    slots = frame.get("slots") if isinstance(frame.get("slots"), Mapping) else {}
-    metrics = list(slots.get("metrics") or [])
-    domain_objects = list(frame.get("domain_objects") or [])
-    if action == "lookup" and (metrics or domain_objects):
-        return "table_qa"
-    if action == "analyze":
-        return "table_qa" if (metrics or domain_objects or "table" in list(frame.get("evidence_modes") or [])) else "summarization"
     if action in ACTION_TO_QUERY_TYPE:
         return ACTION_TO_QUERY_TYPE[action]
     route = semantic_route or {}
@@ -459,23 +464,9 @@ def query_type_from_frame(frame: Mapping[str, Any], semantic_route: Mapping[str,
     return "ambiguous_query"
 
 
-def secondary_query_types(frame: Mapping[str, Any], primary_query_type: str) -> List[str]:
-    result: List[str] = []
-    slots = frame.get("slots") if isinstance(frame.get("slots"), Mapping) else {}
-    requirements = frame.get("requirements") if isinstance(frame.get("requirements"), Mapping) else {}
-    if (slots.get("metrics") or frame.get("domain_objects")) and primary_query_type not in {"table_qa", "fact_lookup"}:
-        result.append("table_qa")
-    if requirements.get("need_citation") and primary_query_type != "citation_locate":
-        result.append("citation_locate")
-    if frame.get("output_format") in {"report", "short_report"} and primary_query_type != "report_generation":
-        result.append("report_generation")
-    return result
-
-
 def merge_structured_frame(base: Mapping[str, Any], incoming: Mapping[str, Any] | None) -> Dict[str, Any]:
     result = {
         "primary_action": _clean(base.get("primary_action")),
-        "secondary_actions": _unique(base.get("secondary_actions") or []),
         "domain_objects": _unique(base.get("domain_objects") or []),
         "evidence_modes": _unique(base.get("evidence_modes") or []),
         "output_format": _clean(base.get("output_format")) or "answer",
@@ -489,7 +480,7 @@ def merge_structured_frame(base: Mapping[str, Any], incoming: Mapping[str, Any] 
 
     if not result["primary_action"] and incoming.get("primary_action"):
         result["primary_action"] = _clean(incoming.get("primary_action"))
-    for key in ("secondary_actions", "domain_objects", "evidence_modes"):
+    for key in ("domain_objects", "evidence_modes"):
         result[key] = _unique([*result.get(key, []), *(incoming.get(key) or [])])
     if result["output_format"] == "answer" and incoming.get("output_format"):
         result["output_format"] = _clean(incoming.get("output_format"))

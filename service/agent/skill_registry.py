@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from typing import Dict, List, Optional
 
-from service.agent.skills import ALL_SKILLS, FactLookupSkill, SkillDefinition
+from service.agent.skills import ALL_SKILLS, InformationExtractionSkill, SkillDefinition
 
 
 class SkillRegistry:
@@ -16,7 +16,7 @@ class SkillRegistry:
                 self._query_type_to_skill[query_type] = skill
 
     def select_skill(self, query_type: str) -> SkillDefinition:
-        return self._query_type_to_skill.get(query_type, FactLookupSkill)
+        return self._query_type_to_skill.get(query_type, InformationExtractionSkill)
 
     def get_skill(self, skill_name: str) -> Optional[SkillDefinition]:
         return self._name_to_skill.get(skill_name)

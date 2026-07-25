@@ -28,6 +28,29 @@ def _clip(text: str, size: int = 180) -> str:
     return value[: size - 3] + "..."
 
 
+def _requires_table_evidence(query_type: str, query: str) -> bool:
+    if query_type == "metric_calculation":
+        return True
+    text = str(query or "").lower()
+    return any(
+        hint in text
+        for hint in (
+            "营业收入",
+            "净利润",
+            "现金流",
+            "每股收益",
+            "毛利率",
+            "研发投入",
+            "资产负债",
+            "金额",
+            "余额",
+            "比例",
+            "table",
+            "metric",
+        )
+    )
+
+
 async def _invoke_callable(func: Callable[..., Any], kwargs: Dict[str, Any]) -> Any:
     try:
         signature = inspect.signature(func)
@@ -175,7 +198,7 @@ class RetrievalEngine:
         return score
 
     def _table_boost(self, query_type: str, query: str, chunk: Dict[str, Any]) -> float:
-        if query_type != "table_qa":
+        if not _requires_table_evidence(query_type, query):
             return 0.0
         if str(chunk.get("chunk_type", "")).lower() != "table":
             return 0.0
@@ -415,7 +438,7 @@ class RetrievalEngine:
         rows = self._dedupe_near_duplicates(rows)
 
         selected = rows[: max(1, int(top_k))]
-        if query_type == "table_qa":
+        if _requires_table_evidence(query_type, query):
             selected = self._enforce_table_quota(selected, rows, quota=max(0, int(table_evidence_quota)))
             selected = sorted(selected, key=lambda item: item.get("final_score", 0.0), reverse=True)[: max(1, int(top_k))]
 

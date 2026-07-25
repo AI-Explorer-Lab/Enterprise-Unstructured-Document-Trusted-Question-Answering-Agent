@@ -6,13 +6,17 @@ from enum import Enum
 
 
 class QueryType(str, Enum):
-    FACT_LOOKUP = "fact_lookup"
-    TABLE_QA = "table_qa"
+    INFORMATION_EXTRACTION = "information_extraction"
+    METRIC_CALCULATION = "metric_calculation"
+    COMPARISON = "comparison"
+    ANALYSIS = "analysis"
     SUMMARIZATION = "summarization"
-    CITATION_LOCATE = "citation_locate"
-    REPORT_GENERATION = "report_generation"
-    MULTI_DOC_COMPARE = "multi_doc_compare"
     AMBIGUOUS_QUERY = "ambiguous_query"
 
 
+SUPPORTED_INTENT_TYPES = tuple(
+    query_type.value
+    for query_type in QueryType
+    if query_type is not QueryType.AMBIGUOUS_QUERY
+)
 SUPPORTED_QUERY_TYPES = tuple(query_type.value for query_type in QueryType)

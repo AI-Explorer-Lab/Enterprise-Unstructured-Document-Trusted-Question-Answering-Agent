@@ -19,13 +19,13 @@ from service.agent.trusted_qa_workflow import get_trusted_qa_workflow
 
 
 EXPECTED_QUERY_TYPES = {
-    "text": "fact_lookup",
-    "table": "table_qa",
-    "skill_fact": "fact_lookup",
-    "skill_table": "table_qa",
-    "citation": "citation_locate",
+    "text": "information_extraction",
+    "table": "information_extraction",
+    "skill_fact": "information_extraction",
+    "skill_table": "information_extraction",
+    "citation": "information_extraction",
     "summary": "summarization",
-    "report": "report_generation",
+    "report": "summarization",
 }
 
 
@@ -152,7 +152,7 @@ def _completed_turn_session() -> Dict[str, Any]:
                 "company": "芯导科技",
                 "period": "2025年",
                 "metric": "营业收入",
-                "last_query_type": "table_qa",
+                "last_query_type": "information_extraction",
                 "updated_at_turn": "turn_1",
             }
         },
@@ -163,7 +163,7 @@ def _completed_turn_session() -> Dict[str, Any]:
                 "content": "2025年营业收入为393,607,502.95元。",
                 "metadata": {
                     "decision": "answer",
-                    "query_type": "table_qa",
+                    "query_type": "information_extraction",
                     "effective_question": "2025年芯导科技营业收入是多少？",
                     "skill_trace": {"slots": {"company": "芯导科技", "period": "2025年", "metric": "营业收入"}},
                     "evidence": [{"doc_source": "annual_report_2025.pdf", "content": "营业收入393,607,502.95元"}],
@@ -185,7 +185,7 @@ def _long_history_session() -> Dict[str, Any]:
                     "content": f"历史回答{index}。",
                     "metadata": {
                         "decision": "answer",
-                        "query_type": "fact_lookup",
+                        "query_type": "information_extraction",
                         "effective_question": f"历史问题{index}是什么？",
                         "evidence": [{"doc_source": "annual_report_2025.pdf", "content": f"历史证据{index}"}],
                         "citations": [{"citation_id": f"C{index}", "doc_source": "annual_report_2025.pdf"}],
@@ -201,7 +201,7 @@ def _long_history_session() -> Dict[str, Any]:
                 "company": "芯导科技",
                 "period": "2025年",
                 "metric": "研发投入",
-                "last_query_type": "table_qa",
+                "last_query_type": "information_extraction",
                 "updated_at_turn": "turn_8",
             }
         },
@@ -219,7 +219,7 @@ def _clarification_session(original_question: str, metric: str) -> Dict[str, Any
                 "content": "请补充要查询的期间。",
                 "metadata": {
                     "decision": "clarify",
-                    "query_type": "table_qa",
+                    "query_type": "information_extraction",
                     "effective_question": original_question,
                     "skill_trace": {"slots": {"metric": metric, "__missing_required__": ["period"]}},
                 },
@@ -238,7 +238,7 @@ def _citation_session(claim: str) -> Dict[str, Any]:
                 "content": claim,
                 "metadata": {
                     "decision": "answer",
-                    "query_type": "fact_lookup",
+                    "query_type": "information_extraction",
                     "effective_question": "请回答并给出依据。",
                     "evidence": [{"doc_source": "annual_report_2025.pdf", "content": claim}],
                     "citations": [{"citation_id": "C1", "doc_source": "annual_report_2025.pdf"}],
