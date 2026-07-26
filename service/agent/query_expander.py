@@ -117,9 +117,11 @@ def _compact_rewrite(question: str) -> str:
 
 def _scenario_enhanced_query(question: str, query_type: str) -> str:
     hints_by_type = {
-        "fact_lookup": "\u5b9a\u4e49 \u5bf9\u5e94\u7ae0\u8282",
-        "table_qa": "\u6307\u6807 \u6570\u503c \u5355\u4f4d \u8868\u5934",
-        "citation_locate": "\u539f\u6587\u51fa\u5904 \u6807\u9898\u8def\u5f84 \u7ae0\u8282 \u539f\u6587\u7247\u6bb5",
+        "information_extraction": "明确披露 事实 数值 原文",
+        "metric_calculation": "指标 数值 单位 期间 公式 表头",
+        "comparison": "比较对象 统一口径 差异",
+        "analysis": "原因 影响 趋势 风险 依据",
+        "summarization": "主题 章节 要点",
     }
-    hints = hints_by_type.get(str(query_type or "fact_lookup"), "\u5b9a\u4e49 \u5bf9\u5e94\u7ae0\u8282")
+    hints = hints_by_type.get(str(query_type or "information_extraction"), "核心对象 对应章节")
     return normalize_whitespace(f"{question} {hints}", preserve_newlines=False)

@@ -32,7 +32,7 @@ def _xindao_scopes():
 def test_scope_gate_refuses_company_not_present_in_collection() -> None:
     scope = resolve_retrieval_scope(
         question="对比中芯国际和华虹半导体的营收",
-        query_type="multi_doc_compare",
+        query_type="comparison",
         slots={
             "companies": ["中芯国际", "华虹半导体"],
             "compare_targets": ["中芯国际", "华虹半导体"],
@@ -53,7 +53,7 @@ def test_scope_gate_refuses_company_not_present_in_collection() -> None:
 def test_scope_gate_does_not_silently_replace_unknown_company_with_xindao() -> None:
     scope = resolve_retrieval_scope(
         question="中芯国际2024年营业收入是多少？",
-        query_type="table_qa",
+        query_type="information_extraction",
         slots={
             "companies": ["中芯国际"],
             "years": ["2024"],
@@ -73,7 +73,7 @@ def test_scope_gate_does_not_silently_replace_unknown_company_with_xindao() -> N
 def test_scope_gate_accepts_xindao_and_uses_only_available_year() -> None:
     scope = resolve_retrieval_scope(
         question="分析芯导科技的财务三表",
-        query_type="table_qa",
+        query_type="analysis",
         slots={
             "companies": ["上海芯导电子科技股份有限公司"],
             "domain_objects": ["financial_three_statements"],
@@ -101,7 +101,7 @@ def test_future_supported_multi_company_compare_keeps_both_companies_in_scope() 
     ]
     scope = resolve_retrieval_scope(
         question="对比芯导科技和华虹半导体2025年的营业收入",
-        query_type="multi_doc_compare",
+        query_type="comparison",
         slots={
             "companies": ["上海芯导电子科技股份有限公司", "华虹半导体"],
             "compare_targets": ["芯导科技", "华虹半导体"],
@@ -121,8 +121,8 @@ def test_future_supported_multi_company_compare_keeps_both_companies_in_scope() 
 
 
 def test_three_statement_gate_requires_evidence_for_each_subtask() -> None:
-    plan = build_query_plan("分析芯导科技的财务三表", "table_qa")
-    slots = {"query_plan": plan}
+    plan = build_query_plan("分析芯导科技的财务三表", "analysis")
+    slots = {"query_plan": plan, "evidence_modes": ["table"]}
     evidence = [
         {
             "chunk_id": "balance",
@@ -142,13 +142,13 @@ def test_three_statement_gate_requires_evidence_for_each_subtask() -> None:
 
     first = EvidenceGate(retry_limit=1).evaluate(
         evidence,
-        query_type="table_qa",
+        query_type="analysis",
         retry_count=0,
         slots=slots,
     )
     final = EvidenceGate(retry_limit=1).evaluate(
         evidence,
-        query_type="table_qa",
+        query_type="analysis",
         retry_count=1,
         slots=slots,
     )
@@ -163,7 +163,7 @@ def test_three_statement_gate_requires_evidence_for_each_subtask() -> None:
 
 
 def test_three_statement_gate_answers_when_all_subtasks_are_covered() -> None:
-    plan = build_query_plan("分析芯导科技的财务三表", "table_qa")
+    plan = build_query_plan("分析芯导科技的财务三表", "analysis")
     evidence = [
         {
             "chunk_id": subtask["slot"],
@@ -177,9 +177,9 @@ def test_three_statement_gate_answers_when_all_subtasks_are_covered() -> None:
 
     result = EvidenceGate(retry_limit=1).evaluate(
         evidence,
-        query_type="table_qa",
+        query_type="analysis",
         retry_count=0,
-        slots={"query_plan": plan},
+        slots={"query_plan": plan, "evidence_modes": ["table"]},
     )
 
     assert result["decision"] == "answer"
@@ -196,7 +196,7 @@ def test_table_gate_does_not_accept_plain_text_as_financial_table_evidence() -> 
                 "score": 0.9,
             }
         ],
-        query_type="table_qa",
+        query_type="information_extraction",
         retry_count=0,
         slots={"metric": "营业收入", "period": "2025"},
     )
@@ -205,7 +205,7 @@ def test_table_gate_does_not_accept_plain_text_as_financial_table_evidence() -> 
     assert result["reason"] == "missing_table_evidence_after_retry"
 
 
-def test_compare_gate_requires_two_distinct_documents() -> None:
+def test_year_comparison_gate_requires_both_periods_in_evidence() -> None:
     result = EvidenceGate(retry_limit=0).evaluate(
         [
             {
@@ -215,10 +215,29 @@ def test_compare_gate_requires_two_distinct_documents() -> None:
                 "score": 0.9,
             }
         ],
-        query_type="multi_doc_compare",
+        query_type="comparison",
         retry_count=0,
         slots={"compare_targets": ["2024", "2025"]},
     )
 
     assert result["decision"] == "refuse"
-    assert result["reason"] == "missing_multi_doc_evidence_after_retry"
+    assert result["reason"] == "missing_year_evidence_after_retry"
+
+
+def test_year_comparison_can_use_one_table_that_contains_both_periods() -> None:
+    result = EvidenceGate(retry_limit=0).evaluate(
+        [
+            {
+                "chunk_id": "two-year-table",
+                "doc_id": "xindao-2025",
+                "chunk_type": "table",
+                "content": "项目 2025年 2024年\n营业收入 120 100",
+                "score": 0.9,
+            }
+        ],
+        query_type="comparison",
+        retry_count=0,
+        slots={"compare_targets": ["2024", "2025"], "metric": "营业收入"},
+    )
+
+    assert result["decision"] == "answer"

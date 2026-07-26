@@ -48,7 +48,7 @@ class RetrievalResultCache:
         return RetrievalCacheKey(
             collection_name=str(collection_name or "default"),
             question_hash=str(question_hash or ""),
-            query_type=str(query_type or "fact_lookup"),
+            query_type=str(query_type or "information_extraction"),
             top_k=max(1, int(top_k)),
             filter_hash=str(filter_hash or ""),
         )

@@ -75,13 +75,23 @@ def _requested_years(slots: Mapping[str, Any]) -> List[int]:
         years = _years_from_value(metadata_filter.get("year"))
         if years:
             return years
-    return _years_from_value(slots.get("years"))
+    years = _years_from_value(slots.get("years"))
+    if years:
+        return years
+    return _years_from_value(slots.get("compare_targets"))
 
 
 def _evidence_years(rows: Sequence[Mapping[str, Any]]) -> List[int]:
     years: List[int] = []
     for row in rows:
-        for year in _years_from_value(_metadata_value(row, "year")):
+        values = [
+            _metadata_value(row, "year"),
+            row.get("content"),
+            row.get("raw_doc"),
+            row.get("table_header_text"),
+            row.get("table_context_text"),
+        ]
+        for year in _years_from_value(values):
             if year not in years:
                 years.append(year)
     return years
@@ -208,7 +218,13 @@ class EvidenceGate:
             }
         )
 
-        if query_type == "table_qa" and table_count < max(1, int(table_evidence_quota)):
+        evidence_modes = {str(item) for item in slots.get("evidence_modes") or []}
+        table_required = (
+            query_type == "metric_calculation"
+            or "table" in evidence_modes
+            or (query_type == "information_extraction" and bool(slots.get("metric")))
+        )
+        if table_required and table_count < max(1, int(table_evidence_quota)):
             diagnostics["coverage_warnings"].append("missing_table_evidence")
             decision = "retry" if retry_count < self.retry_limit else "refuse"
             reason = "missing_table_evidence" if decision == "retry" else "missing_table_evidence_after_retry"
@@ -220,7 +236,9 @@ class EvidenceGate:
                 "message": "检索结果缺少满足要求的表格证据，不能仅依据普通文本生成财务数值结论。",
             }
 
-        if query_type == "multi_doc_compare" and len(docs) < 2:
+        compare_targets = [str(item).strip() for item in slots.get("compare_targets") or [] if str(item).strip()]
+        compares_years = len(compare_targets) >= 2 and len(_years_from_value(compare_targets)) == len(compare_targets)
+        if query_type == "comparison" and not compares_years and len(docs) < 2:
             diagnostics["coverage_warnings"].append("multi_doc_evidence_missing")
             decision = "retry" if retry_count < self.retry_limit else "refuse"
             reason = "missing_multi_doc_evidence" if decision == "retry" else "missing_multi_doc_evidence_after_retry"
@@ -259,7 +277,13 @@ class EvidenceGate:
                 }
 
         requested_years = _requested_years(slots)
-        if len(requested_years) > 1 and query_type in {"table_qa", "fact_lookup", "multi_doc_compare", "summarization", "report_generation"}:
+        if len(requested_years) > 1 and query_type in {
+            "information_extraction",
+            "metric_calculation",
+            "comparison",
+            "analysis",
+            "summarization",
+        }:
             evidence_years = _evidence_years(rows)
             missing_years = [year for year in requested_years if year not in evidence_years]
             diagnostics["requested_years"] = requested_years
@@ -282,7 +306,7 @@ class EvidenceGate:
                     "retry_metadata_filter": _retry_filter_for_years(slots, missing_years),
                 }
 
-        coverage_sensitive_types = {"summarization", "report_generation", "multi_doc_compare"}
+        coverage_sensitive_types = {"analysis", "summarization", "comparison"}
         if query_type in coverage_sensitive_types and len(rows) < self.evidence_min_docs:
             diagnostics["coverage_warnings"].append("insufficient_doc_coverage")
 

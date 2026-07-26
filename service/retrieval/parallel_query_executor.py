@@ -59,9 +59,11 @@ def _looks_like_table_query(query: str) -> bool:
 
 def _query_type_hint(query_type: str) -> str:
     hints = {
-        "fact_lookup": "定义 对应章节",
-        "table_qa": "指标 数值 单位 表头",
-        "citation_locate": "原文出处 标题路径 章节 原文片段",
+        "information_extraction": "明确披露 事实 数值 对应章节",
+        "metric_calculation": "指标 数值 单位 期间 公式 表头",
+        "comparison": "比较对象 统一口径 差异",
+        "analysis": "原因 影响 趋势 风险 依据",
+        "summarization": "主题 章节 要点",
     }
     return hints.get(str(query_type or ""), "核心关键词 相关章节")
 
@@ -153,7 +155,7 @@ class ParallelQueryExecutor:
     ) -> Dict[str, Any]:
         effective_top_k = max(1, int(top_k))
         query_text = str(question or "").strip()
-        effective_query_type = str(query_type or "fact_lookup")
+        effective_query_type = str(query_type or "information_extraction")
         question_hash = stable_sha256(query_text)
         repository_revision = int(getattr(self.repository, "revision", 0) or 0)
         repository_backend = str(getattr(self.repository, "backend", "unknown") or "unknown")
@@ -196,7 +198,7 @@ class ParallelQueryExecutor:
         query_variants = self._build_query_variants(query_text, expand_query_num, effective_query_type, expanded_queries=expanded_queries)
         stage_top_n = max(effective_top_k * 4, effective_top_k)
         semaphore = asyncio.Semaphore(self.max_concurrency)
-        should_run_table = effective_query_type == "table_qa" or _looks_like_table_query(query_text)
+        should_run_table = effective_query_type == "metric_calculation" or _looks_like_table_query(query_text)
 
         tasks: list[asyncio.Task[Any]] = []
         bm25_queries: list[str] = []
@@ -322,7 +324,7 @@ class ParallelQueryExecutor:
         cache_key = self.retrieval_cache.build_key(
             collection_name=collection_name,
             question_hash=cache_hash,
-            query_type=str(query_type or "fact_lookup"),
+            query_type=str(query_type or "information_extraction"),
             top_k=max(1, int(top_k)),
             filter_hash=filter_hash,
         )
@@ -346,7 +348,7 @@ class ParallelQueryExecutor:
         self,
         question: str,
         expand_query_num: int,
-        query_type: str = "fact_lookup",
+        query_type: str = "information_extraction",
         expanded_queries: Sequence[str] | None = None,
     ) -> list[str]:
         del expand_query_num
@@ -645,4 +647,3 @@ class ParallelQueryExecutor:
 
         ranked.sort(key=lambda item: _safe_float(item.get("retrieval_score")), reverse=True)
         return ranked
-

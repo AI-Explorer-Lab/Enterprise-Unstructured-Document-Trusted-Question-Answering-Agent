@@ -96,7 +96,7 @@ def _metadata_boost(query_tokens: set[str], page_hint: int | None, candidate: Di
 
 
 def _table_boost(query_tokens: set[str], candidate: Dict[str, Any], query_type: str) -> float:
-    if str(query_type or "") != "table_qa":
+    if str(query_type or "") != "metric_calculation":
         return 0.0
 
     score = 0.0
@@ -567,7 +567,7 @@ class TwoStageHybridReranker:
                 seen.add(cid)
 
         merged.sort(key=lambda row: _safe_float(row.get("rank_score") or row.get("final_score") or _candidate_recall_score(row)), reverse=True)
-        if str(query_type or "") != "table_qa" or quota <= 0:
+        if str(query_type or "") != "metric_calculation" or quota <= 0:
             return merged[:limit]
 
         table_rows = [row for row in merged if str(row.get("chunk_type") or "") == "table"]

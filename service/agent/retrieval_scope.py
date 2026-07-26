@@ -129,7 +129,7 @@ def _trend_limit(question: str) -> int | None:
 def is_year_sensitive_question(question: str, query_type: str, slots: Mapping[str, Any] | None = None) -> bool:
     text = _clean(question)
     slot_values = slots or {}
-    if query_type == "table_qa":
+    if query_type == "metric_calculation":
         return True
     if _clean(slot_values.get("metric")):
         return True
@@ -205,7 +205,7 @@ def resolve_retrieval_scope(
         if companies and not _company_is_available(requested, companies, company_registry)
     ]
     multi_company_request = (
-        query_type == "multi_doc_compare"
+        query_type == "comparison"
         and len(requested_companies) >= 2
         and not unsupported_companies
     )

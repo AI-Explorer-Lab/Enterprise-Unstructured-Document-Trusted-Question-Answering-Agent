@@ -18,7 +18,7 @@ class RetrievalCandidate(BaseModel):
     content: str
 
     query: str = ""
-    query_type: str = "fact_lookup"
+    query_type: str = "information_extraction"
     retrieval_source: str = "dense"
 
     chunk_type: str = "text"
@@ -42,7 +42,7 @@ class RetrievalTrace(BaseModel):
     collection_name: str = ""
 
     question: str
-    query_type: str = "fact_lookup"
+    query_type: str = "information_extraction"
     expanded_queries: List[str] = Field(default_factory=list)
 
     dense_candidates: List[RetrievalCandidate] = Field(default_factory=list)

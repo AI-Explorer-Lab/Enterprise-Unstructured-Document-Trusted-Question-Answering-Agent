@@ -10,7 +10,7 @@ domain_glossary:
             - 三大财务报表
             - 三张财务报表
             - 三张报表
-          query_type: table_qa
+          query_type: analysis
           strategy: subtask_independent_retrieval
           reason: The question asks for multiple financial statement objects that should not compete in one retrieval pool.
           slots:

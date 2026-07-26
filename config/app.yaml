@@ -102,18 +102,21 @@ agent:
   orchestration: trusted_qa_workflow
   max_iterations: 6
   skill_trace_enabled: true
-  default_skill: fact_lookup
+  default_skill: information_extraction
   use_llm_intent_slot: false
+planner:
+  enabled: true
+  max_tasks: 8
+  allow_one_repair: true
 skills:
   enabled:
-    - fact_lookup
-    - table_qa
-    - citation_locate
+    - information_extraction
+    - metric_calculation
+    - comparison
+    - analysis
     - summarization
-    - report_generation
-    - multi_doc_compare
   clarify_before_skill: true
-  fallback_skill: fact_lookup
+  fallback_skill: information_extraction
 pdf:
   parser: mineru
   max_pages_per_task: 200

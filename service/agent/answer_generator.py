@@ -3,6 +3,8 @@ from __future__ import annotations
 import re
 from typing import Any, Dict, List
 
+from service.agent.query_classifier import is_financial_table_query
+
 
 def _content(row: Dict[str, Any]) -> str:
     return str(row.get("raw_doc") or row.get("content") or "").strip()
@@ -257,14 +259,16 @@ class AnswerGenerator:
             answer = self._refuse_answer(query_type, gate_reason, gate_message)
             return {"answer": answer, "citations": citations, "evidence": evidence_payload, "confidence": 0.0}
 
-        if query_type == "table_qa":
+        if query_type == "metric_calculation":
+            answer = self._calculation_answer(evidence_payload, question=question)
+        elif query_type == "information_extraction" and is_financial_table_query(question):
             answer = self._table_answer(evidence_payload, question=question)
-        elif query_type == "citation_locate":
-            answer = self._citation_locate_answer(evidence_payload)
-        elif query_type == "multi_doc_compare":
+        elif query_type == "comparison":
             answer = self._compare_answer(evidence_payload)
-        elif query_type in {"summarization", "report_generation"}:
-            answer = self._summary_answer(query_type, evidence_payload)
+        elif query_type == "analysis":
+            answer = self._analysis_answer(evidence_payload)
+        elif query_type == "summarization":
+            answer = self._summary_answer(evidence_payload)
         else:
             answer = self._fact_answer(evidence_payload)
 
@@ -296,8 +300,6 @@ class AnswerGenerator:
             return "\u672a\u68c0\u7d22\u5230\u8db3\u591f\u7684\u591a\u6587\u6863\u8bc1\u636e\uff0c\u65e0\u6cd5\u8fdb\u884c\u53ef\u9760\u5bf9\u6bd4\u3002\u8bf7\u786e\u8ba4\u8981\u5bf9\u6bd4\u7684\u6587\u6863\u90fd\u5df2\u7d22\u5f15\u5230\u540c\u4e00\u4e2a collection_name\u3002"
         if reason in {"insufficient_doc_coverage", "insufficient_doc_coverage_after_retry"}:
             return "\u68c0\u7d22\u5230\u7684\u8bc1\u636e\u8986\u76d6\u4e0d\u8db3\uff0c\u65e0\u6cd5\u751f\u6210\u53ef\u9760\u7684\u603b\u7ed3\u6216\u62a5\u544a\u3002\u8bf7\u6269\u5927\u68c0\u7d22\u8303\u56f4\u6216\u786e\u8ba4\u6587\u6863\u96c6\u5408\u662f\u5426\u5b8c\u6574\u3002"
-        if query_type == "citation_locate":
-            return "\u672a\u627e\u5230\u53ef\u5b9a\u4f4d\u7684\u539f\u6587\u8bc1\u636e\uff0c\u56e0\u6b64\u65e0\u6cd5\u7ed9\u51fa\u9875\u7801\u3001\u6807\u9898\u8def\u5f84\u6216 chunk_id\u3002"
         return "\u68c0\u7d22\u5230\u7684\u8bc1\u636e\u76f8\u5173\u6027\u4e0d\u8db3\uff0c\u65e0\u6cd5\u57fa\u4e8e PDF \u6587\u6863\u53ef\u9760\u56de\u7b54\u3002\u8bf7\u6362\u4e00\u79cd\u66f4\u5177\u4f53\u7684\u95ee\u6cd5\uff0c\u6216\u786e\u8ba4\u7d22\u5f15\u548c collection_name \u662f\u5426\u6b63\u786e\u3002"
 
     def _fact_answer(self, evidence: List[Dict[str, Any]]) -> str:
@@ -322,24 +324,24 @@ class AnswerGenerator:
             return self._fact_answer(evidence)
         return "\n".join(lines)
 
-    def _citation_locate_answer(self, evidence: List[Dict[str, Any]]) -> str:
+    def _calculation_answer(self, evidence: List[Dict[str, Any]], question: str = "") -> str:
         if not evidence:
-            return "\u672a\u627e\u5230\u53ef\u5b9a\u4f4d\u7684\u539f\u6587\u8bc1\u636e\u3002"
-        lines = ["\u8bc1\u636e\u4f4d\u7f6e\u5982\u4e0b\uff1a"]
+            return "未检索到可用于计算的年报数值证据。"
+        table_answer = self._table_answer(evidence, question=question)
+        return "计算所需的证据如下；最终计算必须明确输入值、公式、期间和单位：\n" + table_answer
+
+    def _analysis_answer(self, evidence: List[Dict[str, Any]]) -> str:
+        if not evidence:
+            return "未检索到可用于分析的年报证据。"
+        lines = ["分析依据（区分原文事实与后续推断）："]
         for item in evidence:
-            meta = item.get("metadata", {})
-            page = _display_page_range(meta.get("page_range"), meta.get("page_idx"))
-            lines.append(
-                f"- \u76f8\u5173\u5185\u5bb9\uff1a{_answer_text(item.get('content', ''))}\uff1b\u9875\u7801\uff1a{page}\uff1b"
-                f"\u6807\u9898\u8def\u5f84\uff1a{meta.get('heading_path', '')}\uff1bchunk_id\uff1a{item.get('chunk_id')} [{self._citation_label(item)}]"
-            )
+            lines.append(f"- {_answer_text(item.get('content', ''))} [{self._citation_label(item)}]")
         return "\n".join(lines)
 
-    def _summary_answer(self, query_type: str, evidence: List[Dict[str, Any]]) -> str:
+    def _summary_answer(self, evidence: List[Dict[str, Any]]) -> str:
         if not evidence:
             return "\u672a\u68c0\u7d22\u5230\u53ef\u7528\u4e8e\u603b\u7ed3\u7684 PDF \u8bc1\u636e\u3002"
-        title = "\u62a5\u544a" if query_type == "report_generation" else "\u6458\u8981"
-        lines = [f"{title}\uff08\u57fa\u4e8e\u68c0\u7d22\u5230\u7684 PDF \u8bc1\u636e\uff09\uff1a"]
+        lines = ["摘要（基于检索到的 PDF 证据）："]
         for item in evidence:
             lines.append(f"- {_answer_text(item.get('content', ''))} [{self._citation_label(item)}]")
         return "\n".join(lines)
@@ -367,9 +369,9 @@ class AnswerGenerator:
 
     @staticmethod
     def _clarify_answer(query_type: str, gate_reason: str) -> str:
-        if query_type == "table_qa":
-            return "\u8bf7\u8865\u5145\u8981\u67e5\u8be2\u7684\u6307\u6807\u548c\u671f\u95f4\uff0c\u4f8b\u5982\uff1a2025 \u5e74\u8425\u4e1a\u6536\u5165\u662f\u591a\u5c11\uff1f"
-        if query_type == "multi_doc_compare":
+        if query_type == "metric_calculation":
+            return "请补充需要计算的指标及必要期间，例如：根据 2024 年和 2025 年营业收入计算同比增长率。"
+        if query_type == "comparison":
             return "\u8bf7\u8bf4\u660e\u8981\u5bf9\u6bd4\u7684\u81f3\u5c11\u4e24\u4e2a PDF\u3001\u516c\u53f8\u6216\u62a5\u544a\u540d\u79f0\u3002"
         return f"\u95ee\u9898\u8fd8\u7f3a\u5c11\u5173\u952e\u4fe1\u606f\uff0c\u8bf7\u8865\u5145\u540e\u518d\u67e5\u8be2\u3002\u7f3a\u5931\u539f\u56e0\uff1a{gate_reason or 'missing_slots'}"
 

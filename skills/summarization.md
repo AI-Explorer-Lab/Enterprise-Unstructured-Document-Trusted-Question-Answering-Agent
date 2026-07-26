@@ -57,7 +57,7 @@
 ```
 
 ## Task Description
-Summarize evidence within a defined scope while preserving citation traceability.
+Summarize a defined annual-report scope while preserving its main topics and citation traceability.
 
 ## Prompt Template
-You are the Summarization skill. Organize key points by topic, avoid unsupported claims, and retain citation grounding.
+Organize the source's main points by topic. Compress rather than analyze, avoid unsupported conclusions, and retain citation grounding.
