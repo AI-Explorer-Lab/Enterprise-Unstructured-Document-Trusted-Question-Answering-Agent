@@ -485,6 +485,18 @@ def test_unknown_route_never_forces_hard_rule_top_intent() -> None:
     assert result["intent_trace"]["routing_state"] == "unknown_intent"
 
 
+def test_offline_deterministic_embedding_uses_auditable_hard_action() -> None:
+    frame = HardSignalExtractor(_registry()).extract("How long is the probation period?")
+    route = {
+        "route_status": "unknown",
+        "top_intent": "",
+        "provider": "deterministic_hash_embedding",
+    }
+
+    assert frame["primary_action"] == "extract"
+    assert query_type_from_frame(frame, route) == "information_extraction"
+
+
 def test_legacy_query_types_normalize_to_new_model() -> None:
     assert PRIMARY_INTENT_TYPES == (
         "information_extraction",

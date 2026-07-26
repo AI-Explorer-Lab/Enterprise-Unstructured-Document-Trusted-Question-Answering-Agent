@@ -38,7 +38,23 @@ ACTION_TERMS: Dict[str, tuple[str, ...]] = {
     "calculate": ("计算", "算一下", "算出", "增长率", "增幅", "下降幅度", "差额", "增长了多少", "下降了多少", "增加了多少", "减少了多少"),
     "analyze": ("分析", "解读", "原因", "为什么", "影响", "怎么看", "说明什么", "意味着什么", "能看出什么", "趋势"),
     "summarize": ("总结", "概述", "概括", "归纳", "梳理"),
-    "extract": ("查一下", "查询", "告诉我", "是多少", "是什么", "多少", "原文在哪", "在哪一页", "哪一页提到", "找到原文"),
+    "extract": (
+        "查一下",
+        "查询",
+        "告诉我",
+        "是多少",
+        "是什么",
+        "多少",
+        "原文在哪",
+        "在哪一页",
+        "哪一页提到",
+        "找到原文",
+        "how much",
+        "how long",
+        "what is",
+        "find",
+        "extract",
+    ),
 }
 
 CITATION_REQUIREMENT_TERMS = (
@@ -546,6 +562,11 @@ def query_type_from_frame(frame: Mapping[str, Any], semantic_route: Mapping[str,
     route = semantic_route or {}
     route_status = _clean(route.get("route_status") or route.get("decision"))
     top_intent = _clean(route.get("top_intent") or route.get("top_query_type"))
+    provider = _clean(route.get("provider")).lower()
+    action = _clean(frame.get("primary_action"))
+    if provider in {"deterministic_hash_embedding", "deterministic", "local", "none"}:
+        if action in ACTION_TO_QUERY_TYPE:
+            return ACTION_TO_QUERY_TYPE[action]
     if route_status in {"accepted", "accept"} and top_intent:
         return top_intent
     if route_status in {"ambiguous", "unknown", "no_match"}:
@@ -553,7 +574,6 @@ def query_type_from_frame(frame: Mapping[str, Any], semantic_route: Mapping[str,
     # Only use deterministic action routing when the embedding service is
     # disabled or unavailable; production routing is embedding-first.
     if route_status in {"", "disabled", "error"}:
-        action = _clean(frame.get("primary_action"))
         if action in ACTION_TO_QUERY_TYPE:
             return ACTION_TO_QUERY_TYPE[action]
     return "ambiguous_query"
