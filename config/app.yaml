@@ -103,7 +103,6 @@ agent:
   max_iterations: 6
   skill_trace_enabled: true
   default_skill: information_extraction
-  use_llm_intent_slot: false
 planner:
   enabled: true
   max_tasks: 8

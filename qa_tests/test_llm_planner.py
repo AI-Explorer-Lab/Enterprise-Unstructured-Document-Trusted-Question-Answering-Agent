@@ -115,6 +115,44 @@ def test_planner_uses_structured_schema_and_intent_tool_subset() -> None:
     assert exposed == DEFAULT_TOOL_REGISTRY.allowed_names("comparison")
 
 
+def test_planner_receives_llm_routed_sub_intents_in_execution_order() -> None:
+    plan = build_safe_fallback_plan(
+        "analysis",
+        {
+            "metric": "营业收入",
+            "focus": "差异原因",
+        },
+        DEFAULT_SCHEMA_REGISTRY,
+        DEFAULT_TOOL_REGISTRY,
+    )
+    llm = _PlannerLLM([plan])
+    planner = LLMPlanner(
+        llm,
+        DEFAULT_SCHEMA_REGISTRY,
+        DEFAULT_TOOL_REGISTRY,
+        _validator(),
+    )
+
+    result = asyncio.run(
+        planner.plan(
+            "比较两家公司营业收入并分析差异原因",
+            "analysis",
+            {
+                "metric": "营业收入",
+                "focus": "差异原因",
+                "intent_sub_intents": ["comparison", "analysis"],
+            },
+        )
+    )
+
+    assert result["routed_sub_intents"] == ["comparison", "analysis"]
+    assert llm.calls[0]["user_payload"]["routed_sub_intents"] == [
+        "comparison",
+        "analysis",
+    ]
+    assert result["plan"]["intent"] == "analysis"
+
+
 def test_planner_cannot_override_rule_slots_or_required_output_constraints() -> None:
     plan = _comparison_plan()
     plan["input_slots"]["companies"] = ["虚构公司"]

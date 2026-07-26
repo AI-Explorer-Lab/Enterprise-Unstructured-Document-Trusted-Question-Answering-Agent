@@ -18,7 +18,7 @@ PROJECT_ROOT = Path(__file__).resolve().parents[2]
 if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
-from service.agent.structured_understanding import (  # noqa: E402
+from legacy_embedding_router import (  # noqa: E402
     SemanticSkillRouter,
     load_intent_router_config,
 )
@@ -466,6 +466,12 @@ async def main() -> None:
         default=Path(__file__).with_name("intent_recognition_eval.jsonl"),
     )
     parser.add_argument(
+        "--router-config",
+        type=Path,
+        default=Path(__file__).with_name("legacy_embedding_router.yaml"),
+        help="Legacy Embedding router configuration used only to reproduce the baseline.",
+    )
+    parser.add_argument(
         "--out-json",
         type=Path,
         default=Path(__file__).with_name("results") / "intent_recognition_result.json",
@@ -515,7 +521,7 @@ async def main() -> None:
         provider=provider,
         max_requests_per_second=args.embedding_qps,
     )
-    router_config = load_intent_router_config()
+    router_config = load_intent_router_config(args.router_config)
     router = SemanticSkillRouter(embedding_service, router_config)
 
     started_at = datetime.now(timezone.utc)
@@ -586,7 +592,7 @@ async def main() -> None:
             Counter(str(row["predicted_route_status"]) for row in results)
         ),
     }
-    config_path = PROJECT_ROOT / "config" / "intent_router.yaml"
+    config_path = args.router_config
     payload = {
         "metadata": {
             "scope": "semantic_router_only_no_retrieval_no_llm_fallback",

@@ -344,12 +344,14 @@ class LLMPlanner:
             self.schema_registry,
             self.tool_registry,
         )
+        routed_sub_intents = _clean_list(extracted_slots.get("intent_sub_intents"))
         payload = await self._call_planner(
             question,
             intent_id,
             schema,
             seed,
             conversation_context or {},
+            routed_sub_intents,
         )
         source = "llm"
         if payload is None:
@@ -391,6 +393,7 @@ class LLMPlanner:
             "validation": validation.as_dict(),
             "source": source,
             "repair_attempted": repair_attempted,
+            "routed_sub_intents": routed_sub_intents,
         }
 
     async def _call_planner(
@@ -400,6 +403,7 @@ class LLMPlanner:
         schema: type,
         seed: Mapping[str, Any],
         conversation_context: Mapping[str, Any],
+        routed_sub_intents: List[str],
     ) -> Dict[str, Any] | None:
         structured_json = getattr(self.llm_service, "structured_json", None)
         if not callable(structured_json):
@@ -408,10 +412,13 @@ class LLMPlanner:
             payload = await structured_json(
                 "Create one bounded execution plan. Extract only user-provided input slots. "
                 "Never populate document ids, chunks, pages, tables, evidence, scores, citations, or tool outputs. "
-                "Use only the supplied tools and return only the structured schema.",
+                "Use only the supplied tools and return only the structured schema. "
+                "When routed_sub_intents contains multiple operations, cover every operation in that execution order "
+                "while keeping the routed terminal intent fixed.",
                 {
                     "question": question,
                     "intent": intent_id,
+                    "routed_sub_intents": routed_sub_intents,
                     "seed_input": dict(seed),
                     "conversation_context": dict(conversation_context),
                     "available_tools": self.tool_registry.describe_tools(intent_id),

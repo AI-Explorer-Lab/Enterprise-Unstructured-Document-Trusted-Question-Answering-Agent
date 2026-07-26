@@ -4,6 +4,7 @@ from service.agent.company_registry import CompanyRegistry
 from service.agent.evidence_gate import EvidenceGate
 from service.agent.query_planner import build_query_plan
 from service.agent.retrieval_scope import resolve_retrieval_scope
+from service.agent.trusted_qa_workflow import TrustedQAWorkflow
 
 
 def _registry() -> CompanyRegistry:
@@ -87,6 +88,31 @@ def test_scope_gate_accepts_xindao_and_uses_only_available_year() -> None:
     assert scope.should_clarify is False
     assert scope.company_id == "xindao"
     assert scope.years == [2025]
+
+
+def test_llm_reject_intent_is_not_downgraded_to_clarification() -> None:
+    slots = {"intent_decision": "reject"}
+    payload = TrustedQAWorkflow._build_clarify_payload(
+        "ambiguous_query",
+        "default",
+        slots,
+        selected_skill=None,
+        planner_result={},
+        intent_trace={"intent_decision": "reject"},
+    )
+    scope = resolve_retrieval_scope(
+        question="帮我订一张明天去北京的机票",
+        query_type="ambiguous_query",
+        slots=slots,
+        conversation_focus=None,
+        document_scopes=_xindao_scopes(),
+        company_registry=_registry(),
+    )
+
+    assert payload["decision"] == "refuse"
+    preserved = TrustedQAWorkflow._apply_scope_clarify(payload, scope, slots)
+    assert preserved["decision"] == "refuse"
+    assert preserved["reason"] == "out_of_scope_intent"
 
 
 def test_future_supported_multi_company_compare_keeps_both_companies_in_scope() -> None:

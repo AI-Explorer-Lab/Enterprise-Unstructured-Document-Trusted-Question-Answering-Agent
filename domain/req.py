@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 
 class QARequest(BaseModel):
@@ -12,7 +12,11 @@ class QARequest(BaseModel):
     top_k: int = 5
     expand_query_num: int = 3
     enable_cache: bool = True
-    use_llm_intent_slot: bool = False
+    use_llm_intent_slot: bool = Field(
+        default=True,
+        deprecated=True,
+        description="Deprecated compatibility field; intent routing always uses the zero-shot LLM gate.",
+    )
     include_debug: bool = False
 
 

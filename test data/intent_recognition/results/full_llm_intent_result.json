@@ -6,8 +6,8 @@
     "llm_model": "deepseek-v4-flash",
     "dataset": "/Users/mon/Documents/QA-Agent/test data/intent_recognition/intent_recognition_eval.jsonl",
     "dataset_sha256": "1e154cfb6dc16c0aa06d249ed212bbb922980e11a567898108b261b1d7ba6ae7",
-    "started_at_utc": "2026-07-26T12:28:03.648091+00:00",
-    "elapsed_seconds": 82.864102,
+    "started_at_utc": "2026-07-26T15:08:10.789330+00:00",
+    "elapsed_seconds": 98.302228,
     "llm_call_attempts": 242,
     "concurrency": 3,
     "max_attempts_per_case": 3
@@ -32,8 +32,8 @@
     "decision_counts": {
       "select": 192,
       "reject": 9,
-      "planner": 27,
-      "clarify": 12
+      "planner": 26,
+      "clarify": 13
     }
   },
   "metrics": {
@@ -49,12 +49,12 @@
       },
       "metric_calculation": {
         "support": 40,
-        "tp": 36,
+        "tp": 37,
         "fp": 0,
-        "fn": 4,
+        "fn": 3,
         "precision": 1.0,
-        "recall": 0.9,
-        "f1": 0.947368
+        "recall": 0.925,
+        "f1": 0.961039
       },
       "comparison": {
         "support": 40,
@@ -67,12 +67,12 @@
       },
       "analysis": {
         "support": 40,
-        "tp": 39,
+        "tp": 38,
         "fp": 2,
-        "fn": 1,
-        "precision": 0.95122,
-        "recall": 0.975,
-        "f1": 0.962963
+        "fn": 2,
+        "precision": 0.95,
+        "recall": 0.95,
+        "f1": 0.95
       },
       "summarization": {
         "support": 40,
@@ -86,25 +86,25 @@
       "ambiguous": {
         "support": 20,
         "tp": 20,
-        "fp": 6,
+        "fp": 5,
         "fn": 0,
-        "precision": 0.769231,
+        "precision": 0.8,
         "recall": 1.0,
-        "f1": 0.869565
+        "f1": 0.888889
       },
       "unknown": {
         "support": 20,
         "tp": 20,
-        "fp": 1,
+        "fp": 2,
         "fn": 0,
-        "precision": 0.952381,
+        "precision": 0.909091,
         "recall": 1.0,
-        "f1": 0.97561
+        "f1": 0.952381
       }
     },
-    "macro_precision": 0.937028,
+    "macro_precision": 0.935065,
     "macro_recall": 0.946429,
-    "macro_f1": 0.937507
+    "macro_f1": 0.93705
   },
   "confusion_matrix": {
     "information_extraction": {
@@ -119,11 +119,11 @@
     },
     "metric_calculation": {
       "information_extraction": 0,
-      "metric_calculation": 36,
+      "metric_calculation": 37,
       "comparison": 0,
       "analysis": 0,
       "summarization": 0,
-      "ambiguous": 3,
+      "ambiguous": 2,
       "unknown": 0,
       "invalid": 1
     },
@@ -141,10 +141,10 @@
       "information_extraction": 0,
       "metric_calculation": 0,
       "comparison": 0,
-      "analysis": 39,
+      "analysis": 38,
       "summarization": 0,
       "ambiguous": 1,
-      "unknown": 0,
+      "unknown": 1,
       "invalid": 0
     },
     "summarization": {
@@ -200,7 +200,7 @@
       "prediction_label": "information_extraction",
       "correct": true,
       "attempts": 1,
-      "elapsed_ms": 1294.9095
+      "elapsed_ms": 1189.014833
     },
     {
       "case_id": "ir_ie_002",
@@ -223,7 +223,7 @@
       "prediction_label": "information_extraction",
       "correct": true,
       "attempts": 1,
-      "elapsed_ms": 1126.064125
+      "elapsed_ms": 1122.970417
     },
     {
       "case_id": "ir_ie_003",
@@ -246,7 +246,7 @@
       "prediction_label": "information_extraction",
       "correct": true,
       "attempts": 1,
-      "elapsed_ms": 1028.381375
+      "elapsed_ms": 1044.22625
     },
     {
       "case_id": "ir_ie_004",
@@ -268,7 +268,7 @@
       "prediction_label": "information_extraction",
       "correct": true,
       "attempts": 1,
-      "elapsed_ms": 2235.173833
+      "elapsed_ms": 2224.812916
     },
     {
       "case_id": "ir_ie_005",
@@ -291,7 +291,7 @@
       "prediction_label": "information_extraction",
       "correct": true,
       "attempts": 1,
-      "elapsed_ms": 2561.661083
+      "elapsed_ms": 2194.893125
     },
     {
       "case_id": "ir_ie_006",
@@ -313,7 +313,7 @@
       "prediction_label": "information_extraction",
       "correct": true,
       "attempts": 1,
-      "elapsed_ms": 2503.391458
+      "elapsed_ms": 2171.110542
     },
     {
       "case_id": "ir_ie_007",
@@ -336,7 +336,7 @@
       "prediction_label": "information_extraction",
       "correct": true,
       "attempts": 1,
-      "elapsed_ms": 3452.350292
+      "elapsed_ms": 3430.470833
     },
     {
       "case_id": "ir_ie_008",
@@ -359,7 +359,7 @@
       "prediction_label": "information_extraction",
       "correct": true,
       "attempts": 1,
-      "elapsed_ms": 3655.253
+      "elapsed_ms": 3406.334042
     },
     {
       "case_id": "ir_ie_009",
@@ -382,7 +382,7 @@
       "prediction_label": "information_extraction",
       "correct": true,
       "attempts": 1,
-      "elapsed_ms": 3542.71775
+      "elapsed_ms": 3454.612167
     },
     {
       "case_id": "ir_ie_010",
@@ -405,7 +405,7 @@
       "prediction_label": "information_extraction",
       "correct": true,
       "attempts": 1,
-      "elapsed_ms": 4291.720334
+      "elapsed_ms": 4878.301417
     },
     {
       "case_id": "ir_ie_011",
@@ -428,7 +428,7 @@
       "prediction_label": "information_extraction",
       "correct": true,
       "attempts": 1,
-      "elapsed_ms": 4375.115667
+      "elapsed_ms": 4912.466583
     },
     {
       "case_id": "ir_ie_012",
@@ -451,7 +451,7 @@
       "prediction_label": "information_extraction",
       "correct": true,
       "attempts": 1,
-      "elapsed_ms": 4786.064792
+      "elapsed_ms": 4737.572375
     },
     {
       "case_id": "ir_ie_013",
@@ -474,7 +474,7 @@
       "prediction_label": "information_extraction",
       "correct": true,
       "attempts": 1,
-      "elapsed_ms": 5396.794708
+      "elapsed_ms": 5957.558542
     },
     {
       "case_id": "ir_ie_014",
@@ -497,7 +497,7 @@
       "prediction_label": "information_extraction",
       "correct": true,
       "attempts": 1,
-      "elapsed_ms": 5220.927375
+      "elapsed_ms": 6017.991667
     },
     {
       "case_id": "ir_ie_015",
@@ -520,7 +520,7 @@
       "prediction_label": "information_extraction",
       "correct": true,
       "attempts": 1,
-      "elapsed_ms": 5826.614333
+      "elapsed_ms": 5977.549666
     },
     {
       "case_id": "ir_ie_016",
@@ -543,7 +543,7 @@
       "prediction_label": "information_extraction",
       "correct": true,
       "attempts": 1,
-      "elapsed_ms": 6053.339917
+      "elapsed_ms": 7081.878417
     },
     {
       "case_id": "ir_ie_017",
@@ -566,7 +566,7 @@
       "prediction_label": "information_extraction",
       "correct": true,
       "attempts": 1,
-      "elapsed_ms": 6210.914041
+      "elapsed_ms": 7102.686875
     },
     {
       "case_id": "ir_ie_018",
@@ -589,7 +589,7 @@
       "prediction_label": "information_extraction",
       "correct": true,
       "attempts": 1,
-      "elapsed_ms": 6836.386041
+      "elapsed_ms": 7239.767417
     },
     {
       "case_id": "ir_ie_019",
@@ -612,7 +612,7 @@
       "prediction_label": "information_extraction",
       "correct": true,
       "attempts": 1,
-      "elapsed_ms": 7380.314708
+      "elapsed_ms": 8091.057542
     },
     {
       "case_id": "ir_ie_020",
@@ -635,7 +635,7 @@
       "prediction_label": "unknown",
       "correct": false,
       "attempts": 1,
-      "elapsed_ms": 7117.319375
+      "elapsed_ms": 8068.01225
     },
     {
       "case_id": "ir_ie_021",
@@ -658,7 +658,7 @@
       "prediction_label": "information_extraction",
       "correct": true,
       "attempts": 1,
-      "elapsed_ms": 8041.680375
+      "elapsed_ms": 8365.993291
     },
     {
       "case_id": "ir_ie_022",
@@ -681,7 +681,7 @@
       "prediction_label": "information_extraction",
       "correct": true,
       "attempts": 1,
-      "elapsed_ms": 8082.183458
+      "elapsed_ms": 9265.811292
     },
     {
       "case_id": "ir_ie_023",
@@ -704,7 +704,7 @@
       "prediction_label": "information_extraction",
       "correct": true,
       "attempts": 1,
-      "elapsed_ms": 8165.26525
+      "elapsed_ms": 9192.974291
     },
     {
       "case_id": "ir_ie_024",
@@ -727,7 +727,7 @@
       "prediction_label": "information_extraction",
       "correct": true,
       "attempts": 1,
-      "elapsed_ms": 8982.400625
+      "elapsed_ms": 9484.382
     },
     {
       "case_id": "ir_ie_025",
@@ -750,7 +750,7 @@
       "prediction_label": "information_extraction",
       "correct": true,
       "attempts": 1,
-      "elapsed_ms": 9165.57575
+      "elapsed_ms": 10277.828625
     },
     {
       "case_id": "ir_ie_026",
@@ -773,7 +773,7 @@
       "prediction_label": "information_extraction",
       "correct": true,
       "attempts": 1,
-      "elapsed_ms": 9024.331083
+      "elapsed_ms": 10390.00175
     },
     {
       "case_id": "ir_ie_027",
@@ -796,7 +796,7 @@
       "prediction_label": "information_extraction",
       "correct": true,
       "attempts": 1,
-      "elapsed_ms": 9969.018458
+      "elapsed_ms": 10658.236833
     },
     {
       "case_id": "ir_ie_028",
@@ -819,7 +819,7 @@
       "prediction_label": "information_extraction",
       "correct": true,
       "attempts": 1,
-      "elapsed_ms": 10018.470667
+      "elapsed_ms": 11686.492041
     },
     {
       "case_id": "ir_ie_029",
@@ -842,7 +842,7 @@
       "prediction_label": "information_extraction",
       "correct": true,
       "attempts": 1,
-      "elapsed_ms": 10085.012708
+      "elapsed_ms": 11639.995375
     },
     {
       "case_id": "ir_ie_030",
@@ -865,7 +865,7 @@
       "prediction_label": "information_extraction",
       "correct": true,
       "attempts": 1,
-      "elapsed_ms": 11031.304958
+      "elapsed_ms": 11896.235167
     },
     {
       "case_id": "ir_ie_031",
@@ -888,7 +888,7 @@
       "prediction_label": "information_extraction",
       "correct": true,
       "attempts": 1,
-      "elapsed_ms": 11102.695042
+      "elapsed_ms": 12633.9725
     },
     {
       "case_id": "ir_ie_032",
@@ -911,7 +911,7 @@
       "prediction_label": "information_extraction",
       "correct": true,
       "attempts": 1,
-      "elapsed_ms": 11072.36425
+      "elapsed_ms": 12551.870125
     },
     {
       "case_id": "ir_ie_033",
@@ -934,7 +934,7 @@
       "prediction_label": "information_extraction",
       "correct": true,
       "attempts": 1,
-      "elapsed_ms": 12096.624875
+      "elapsed_ms": 13018.083458
     },
     {
       "case_id": "ir_ie_034",
@@ -957,7 +957,7 @@
       "prediction_label": "information_extraction",
       "correct": true,
       "attempts": 1,
-      "elapsed_ms": 12219.0875
+      "elapsed_ms": 13795.450917
     },
     {
       "case_id": "ir_ie_035",
@@ -980,7 +980,7 @@
       "prediction_label": "information_extraction",
       "correct": true,
       "attempts": 1,
-      "elapsed_ms": 11990.072375
+      "elapsed_ms": 13755.747291
     },
     {
       "case_id": "ir_ie_036",
@@ -1003,7 +1003,7 @@
       "prediction_label": "information_extraction",
       "correct": true,
       "attempts": 1,
-      "elapsed_ms": 12794.54425
+      "elapsed_ms": 14061.718084
     },
     {
       "case_id": "ir_ie_037",
@@ -1026,7 +1026,7 @@
       "prediction_label": "information_extraction",
       "correct": true,
       "attempts": 1,
-      "elapsed_ms": 13062.890959
+      "elapsed_ms": 14975.23775
     },
     {
       "case_id": "ir_ie_038",
@@ -1049,7 +1049,7 @@
       "prediction_label": "information_extraction",
       "correct": true,
       "attempts": 1,
-      "elapsed_ms": 13239.260792
+      "elapsed_ms": 15017.070042
     },
     {
       "case_id": "ir_ie_039",
@@ -1063,7 +1063,7 @@
       "gold_label": "information_extraction",
       "gold_primary_intent": "information_extraction",
       "gold_route_status": "accepted",
-      "raw_response": "{\"decision\":\"select\",\"intent_id\":\"information_extraction\",\"sub_intents\":[]}",
+      "raw_response": "{\n  \"decision\": \"select\",\n  \"intent_id\": \"information_extraction\",\n  \"sub_intents\": []\n}",
       "decision": "select",
       "intent_id": "information_extraction",
       "sub_intents": [],
@@ -1072,7 +1072,7 @@
       "prediction_label": "information_extraction",
       "correct": true,
       "attempts": 1,
-      "elapsed_ms": 13677.478042
+      "elapsed_ms": 15301.658292
     },
     {
       "case_id": "ir_ie_040",
@@ -1095,7 +1095,7 @@
       "prediction_label": "information_extraction",
       "correct": true,
       "attempts": 1,
-      "elapsed_ms": 13995.215458
+      "elapsed_ms": 16311.959375
     },
     {
       "case_id": "ir_mc_001",
@@ -1118,7 +1118,7 @@
       "prediction_label": "metric_calculation",
       "correct": true,
       "attempts": 1,
-      "elapsed_ms": 14259.55575
+      "elapsed_ms": 16350.417333
     },
     {
       "case_id": "ir_mc_002",
@@ -1141,7 +1141,7 @@
       "prediction_label": "metric_calculation",
       "correct": true,
       "attempts": 1,
-      "elapsed_ms": 14746.551
+      "elapsed_ms": 16543.835375
     },
     {
       "case_id": "ir_mc_003",
@@ -1164,7 +1164,7 @@
       "prediction_label": "metric_calculation",
       "correct": true,
       "attempts": 1,
-      "elapsed_ms": 15058.129625
+      "elapsed_ms": 17537.4655
     },
     {
       "case_id": "ir_mc_004",
@@ -1187,7 +1187,7 @@
       "prediction_label": "metric_calculation",
       "correct": true,
       "attempts": 1,
-      "elapsed_ms": 15123.560166
+      "elapsed_ms": 17500.217584
     },
     {
       "case_id": "ir_mc_005",
@@ -1210,7 +1210,7 @@
       "prediction_label": "metric_calculation",
       "correct": true,
       "attempts": 1,
-      "elapsed_ms": 15746.921958
+      "elapsed_ms": 17785.386
     },
     {
       "case_id": "ir_mc_006",
@@ -1233,7 +1233,7 @@
       "prediction_label": "metric_calculation",
       "correct": true,
       "attempts": 1,
-      "elapsed_ms": 16010.823
+      "elapsed_ms": 18739.935125
     },
     {
       "case_id": "ir_mc_007",
@@ -1256,7 +1256,7 @@
       "prediction_label": "metric_calculation",
       "correct": true,
       "attempts": 1,
-      "elapsed_ms": 16212.337459
+      "elapsed_ms": 18770.380209
     },
     {
       "case_id": "ir_mc_008",
@@ -1282,7 +1282,7 @@
       "prediction_label": "ambiguous",
       "correct": false,
       "attempts": 1,
-      "elapsed_ms": 16741.8705
+      "elapsed_ms": 19122.382916
     },
     {
       "case_id": "ir_mc_009",
@@ -1296,19 +1296,16 @@
       "gold_label": "metric_calculation",
       "gold_primary_intent": "metric_calculation",
       "gold_route_status": "accepted",
-      "raw_response": "{\n  \"decision\": \"planner\",\n  \"intent_id\": \"\",\n  \"sub_intents\": [\"information_extraction\", \"metric_calculation\"]\n}",
-      "decision": "planner",
-      "intent_id": "",
-      "sub_intents": [
-        "information_extraction",
-        "metric_calculation"
-      ],
+      "raw_response": "{\n  \"decision\": \"select\",\n  \"intent_id\": \"metric_calculation\",\n  \"sub_intents\": []\n}",
+      "decision": "select",
+      "intent_id": "metric_calculation",
+      "sub_intents": [],
       "valid_response": true,
       "validation_error": "",
-      "prediction_label": "ambiguous",
-      "correct": false,
+      "prediction_label": "metric_calculation",
+      "correct": true,
       "attempts": 1,
-      "elapsed_ms": 16904.708625
+      "elapsed_ms": 20107.150459
     },
     {
       "case_id": "ir_mc_010",
@@ -1331,7 +1328,7 @@
       "prediction_label": "metric_calculation",
       "correct": true,
       "attempts": 1,
-      "elapsed_ms": 17202.918208
+      "elapsed_ms": 19955.977667
     },
     {
       "case_id": "ir_mc_011",
@@ -1354,7 +1351,7 @@
       "prediction_label": "metric_calculation",
       "correct": true,
       "attempts": 1,
-      "elapsed_ms": 17842.158125
+      "elapsed_ms": 20530.140333
     },
     {
       "case_id": "ir_mc_012",
@@ -1377,7 +1374,7 @@
       "prediction_label": "metric_calculation",
       "correct": true,
       "attempts": 1,
-      "elapsed_ms": 17862.524542
+      "elapsed_ms": 21280.703292
     },
     {
       "case_id": "ir_mc_013",
@@ -1400,7 +1397,7 @@
       "prediction_label": "metric_calculation",
       "correct": true,
       "attempts": 1,
-      "elapsed_ms": 18107.804583
+      "elapsed_ms": 21492.400875
     },
     {
       "case_id": "ir_mc_014",
@@ -1423,7 +1420,7 @@
       "prediction_label": "metric_calculation",
       "correct": true,
       "attempts": 1,
-      "elapsed_ms": 19016.367667
+      "elapsed_ms": 22381.818959
     },
     {
       "case_id": "ir_mc_015",
@@ -1446,7 +1443,7 @@
       "prediction_label": "metric_calculation",
       "correct": true,
       "attempts": 1,
-      "elapsed_ms": 18956.734333
+      "elapsed_ms": 22517.658125
     },
     {
       "case_id": "ir_mc_016",
@@ -1469,7 +1466,7 @@
       "prediction_label": "metric_calculation",
       "correct": true,
       "attempts": 1,
-      "elapsed_ms": 19158.864041
+      "elapsed_ms": 22643.609292
     },
     {
       "case_id": "ir_mc_017",
@@ -1492,7 +1489,7 @@
       "prediction_label": "metric_calculation",
       "correct": true,
       "attempts": 1,
-      "elapsed_ms": 19862.414
+      "elapsed_ms": 23584.000416
     },
     {
       "case_id": "ir_mc_018",
@@ -1515,7 +1512,7 @@
       "prediction_label": "metric_calculation",
       "correct": true,
       "attempts": 1,
-      "elapsed_ms": 20196.102708
+      "elapsed_ms": 23786.720125
     },
     {
       "case_id": "ir_mc_019",
@@ -1538,7 +1535,7 @@
       "prediction_label": "metric_calculation",
       "correct": true,
       "attempts": 1,
-      "elapsed_ms": 20239.103792
+      "elapsed_ms": 23864.207625
     },
     {
       "case_id": "ir_mc_020",
@@ -1561,7 +1558,7 @@
       "prediction_label": "metric_calculation",
       "correct": true,
       "attempts": 1,
-      "elapsed_ms": 20692.742417
+      "elapsed_ms": 24767.413375
     },
     {
       "case_id": "ir_mc_021",
@@ -1584,7 +1581,7 @@
       "prediction_label": "metric_calculation",
       "correct": true,
       "attempts": 1,
-      "elapsed_ms": 21137.157
+      "elapsed_ms": 25097.689083
     },
     {
       "case_id": "ir_mc_022",
@@ -1607,7 +1604,7 @@
       "prediction_label": "metric_calculation",
       "correct": true,
       "attempts": 1,
-      "elapsed_ms": 21174.972292
+      "elapsed_ms": 25030.781291
     },
     {
       "case_id": "ir_mc_023",
@@ -1630,7 +1627,7 @@
       "prediction_label": "metric_calculation",
       "correct": true,
       "attempts": 1,
-      "elapsed_ms": 21888.99475
+      "elapsed_ms": 25953.660625
     },
     {
       "case_id": "ir_mc_024",
@@ -1653,7 +1650,7 @@
       "prediction_label": "metric_calculation",
       "correct": true,
       "attempts": 1,
-      "elapsed_ms": 22124.255583
+      "elapsed_ms": 26246.841917
     },
     {
       "case_id": "ir_mc_025",
@@ -1676,7 +1673,7 @@
       "prediction_label": "metric_calculation",
       "correct": true,
       "attempts": 1,
-      "elapsed_ms": 22363.497458
+      "elapsed_ms": 26371.021125
     },
     {
       "case_id": "ir_mc_026",
@@ -1699,7 +1696,7 @@
       "prediction_label": "metric_calculation",
       "correct": true,
       "attempts": 1,
-      "elapsed_ms": 23016.533917
+      "elapsed_ms": 27086.765709
     },
     {
       "case_id": "ir_mc_027",
@@ -1722,7 +1719,7 @@
       "prediction_label": "metric_calculation",
       "correct": true,
       "attempts": 1,
-      "elapsed_ms": 23139.308625
+      "elapsed_ms": 27421.300042
     },
     {
       "case_id": "ir_mc_028",
@@ -1747,7 +1744,7 @@
       "prediction_label": "invalid",
       "correct": false,
       "attempts": 3,
-      "elapsed_ms": 27139.659875
+      "elapsed_ms": 31531.856375
     },
     {
       "case_id": "ir_mc_029",
@@ -1773,7 +1770,7 @@
       "prediction_label": "ambiguous",
       "correct": false,
       "attempts": 1,
-      "elapsed_ms": 23913.844041
+      "elapsed_ms": 28451.922375
     },
     {
       "case_id": "ir_mc_030",
@@ -1796,7 +1793,7 @@
       "prediction_label": "metric_calculation",
       "correct": true,
       "attempts": 1,
-      "elapsed_ms": 24056.369959
+      "elapsed_ms": 28499.846042
     },
     {
       "case_id": "ir_mc_031",
@@ -1819,7 +1816,7 @@
       "prediction_label": "metric_calculation",
       "correct": true,
       "attempts": 1,
-      "elapsed_ms": 24807.413667
+      "elapsed_ms": 29459.878333
     },
     {
       "case_id": "ir_mc_032",
@@ -1842,7 +1839,7 @@
       "prediction_label": "metric_calculation",
       "correct": true,
       "attempts": 1,
-      "elapsed_ms": 24968.179834
+      "elapsed_ms": 29571.749875
     },
     {
       "case_id": "ir_mc_033",
@@ -1856,7 +1853,7 @@
       "gold_label": "metric_calculation",
       "gold_primary_intent": "metric_calculation",
       "gold_route_status": "accepted",
-      "raw_response": "{\n  \"decision\": \"select\",\n  \"intent_id\": \"metric_calculation\",\n  \"sub_intents\": []\n}",
+      "raw_response": "{\"decision\":\"select\",\"intent_id\":\"metric_calculation\",\"sub_intents\":[]}",
       "decision": "select",
       "intent_id": "metric_calculation",
       "sub_intents": [],
@@ -1865,7 +1862,7 @@
       "prediction_label": "metric_calculation",
       "correct": true,
       "attempts": 1,
-      "elapsed_ms": 25882.919709
+      "elapsed_ms": 30356.085125
     },
     {
       "case_id": "ir_mc_034",
@@ -1888,7 +1885,7 @@
       "prediction_label": "metric_calculation",
       "correct": true,
       "attempts": 1,
-      "elapsed_ms": 25779.304625
+      "elapsed_ms": 30617.682458
     },
     {
       "case_id": "ir_mc_035",
@@ -1911,7 +1908,7 @@
       "prediction_label": "metric_calculation",
       "correct": true,
       "attempts": 1,
-      "elapsed_ms": 26677.006083
+      "elapsed_ms": 31456.080709
     },
     {
       "case_id": "ir_mc_036",
@@ -1934,7 +1931,7 @@
       "prediction_label": "metric_calculation",
       "correct": true,
       "attempts": 1,
-      "elapsed_ms": 27068.903916
+      "elapsed_ms": 31650.469791
     },
     {
       "case_id": "ir_mc_037",
@@ -1948,7 +1945,7 @@
       "gold_label": "metric_calculation",
       "gold_primary_intent": "metric_calculation",
       "gold_route_status": "accepted",
-      "raw_response": "{\n  \"decision\": \"select\",\n  \"intent_id\": \"metric_calculation\",\n  \"sub_intents\": []\n}",
+      "raw_response": "{\"decision\":\"select\",\"intent_id\":\"metric_calculation\",\"sub_intents\":[]}",
       "decision": "select",
       "intent_id": "metric_calculation",
       "sub_intents": [],
@@ -1957,7 +1954,7 @@
       "prediction_label": "metric_calculation",
       "correct": true,
       "attempts": 1,
-      "elapsed_ms": 27627.149709
+      "elapsed_ms": 32524.400125
     },
     {
       "case_id": "ir_mc_038",
@@ -1980,7 +1977,7 @@
       "prediction_label": "metric_calculation",
       "correct": true,
       "attempts": 1,
-      "elapsed_ms": 28176.009958
+      "elapsed_ms": 32457.417042
     },
     {
       "case_id": "ir_mc_039",
@@ -2003,7 +2000,7 @@
       "prediction_label": "metric_calculation",
       "correct": true,
       "attempts": 1,
-      "elapsed_ms": 28266.518291
+      "elapsed_ms": 32802.164125
     },
     {
       "case_id": "ir_mc_040",
@@ -2026,7 +2023,7 @@
       "prediction_label": "metric_calculation",
       "correct": true,
       "attempts": 1,
-      "elapsed_ms": 28580.10075
+      "elapsed_ms": 33960.412042
     },
     {
       "case_id": "ir_co_001",
@@ -2049,7 +2046,7 @@
       "prediction_label": "comparison",
       "correct": true,
       "attempts": 1,
-      "elapsed_ms": 29054.985833
+      "elapsed_ms": 33639.450209
     },
     {
       "case_id": "ir_co_002",
@@ -2072,7 +2069,7 @@
       "prediction_label": "comparison",
       "correct": true,
       "attempts": 1,
-      "elapsed_ms": 29308.452667
+      "elapsed_ms": 34001.524
     },
     {
       "case_id": "ir_co_003",
@@ -2095,7 +2092,7 @@
       "prediction_label": "comparison",
       "correct": true,
       "attempts": 1,
-      "elapsed_ms": 29676.408542
+      "elapsed_ms": 35103.298875
     },
     {
       "case_id": "ir_co_004",
@@ -2118,7 +2115,7 @@
       "prediction_label": "analysis",
       "correct": false,
       "attempts": 1,
-      "elapsed_ms": 30118.754041
+      "elapsed_ms": 35171.800167
     },
     {
       "case_id": "ir_co_005",
@@ -2141,7 +2138,7 @@
       "prediction_label": "comparison",
       "correct": true,
       "attempts": 1,
-      "elapsed_ms": 30294.603541
+      "elapsed_ms": 35146.176917
     },
     {
       "case_id": "ir_co_006",
@@ -2164,7 +2161,7 @@
       "prediction_label": "comparison",
       "correct": true,
       "attempts": 1,
-      "elapsed_ms": 30540.696417
+      "elapsed_ms": 36350.396125
     },
     {
       "case_id": "ir_co_007",
@@ -2187,7 +2184,7 @@
       "prediction_label": "comparison",
       "correct": true,
       "attempts": 1,
-      "elapsed_ms": 30942.703041
+      "elapsed_ms": 36498.022125
     },
     {
       "case_id": "ir_co_008",
@@ -2210,7 +2207,7 @@
       "prediction_label": "comparison",
       "correct": true,
       "attempts": 1,
-      "elapsed_ms": 31318.556917
+      "elapsed_ms": 36372.350584
     },
     {
       "case_id": "ir_co_009",
@@ -2233,7 +2230,7 @@
       "prediction_label": "comparison",
       "correct": true,
       "attempts": 1,
-      "elapsed_ms": 31570.016708
+      "elapsed_ms": 37435.7105
     },
     {
       "case_id": "ir_co_010",
@@ -2256,7 +2253,7 @@
       "prediction_label": "comparison",
       "correct": true,
       "attempts": 1,
-      "elapsed_ms": 31808.362709
+      "elapsed_ms": 37471.28075
     },
     {
       "case_id": "ir_co_011",
@@ -2279,7 +2276,7 @@
       "prediction_label": "information_extraction",
       "correct": false,
       "attempts": 1,
-      "elapsed_ms": 32265.943084
+      "elapsed_ms": 37707.149708
     },
     {
       "case_id": "ir_co_012",
@@ -2302,7 +2299,7 @@
       "prediction_label": "comparison",
       "correct": true,
       "attempts": 1,
-      "elapsed_ms": 32493.908
+      "elapsed_ms": 38621.939458
     },
     {
       "case_id": "ir_co_013",
@@ -2325,7 +2322,7 @@
       "prediction_label": "comparison",
       "correct": true,
       "attempts": 1,
-      "elapsed_ms": 32866.752959
+      "elapsed_ms": 38810.95825
     },
     {
       "case_id": "ir_co_014",
@@ -2348,7 +2345,7 @@
       "prediction_label": "comparison",
       "correct": true,
       "attempts": 1,
-      "elapsed_ms": 33143.608
+      "elapsed_ms": 38854.239666
     },
     {
       "case_id": "ir_co_015",
@@ -2371,7 +2368,7 @@
       "prediction_label": "comparison",
       "correct": true,
       "attempts": 1,
-      "elapsed_ms": 33416.04425
+      "elapsed_ms": 39834.388709
     },
     {
       "case_id": "ir_co_016",
@@ -2394,7 +2391,7 @@
       "prediction_label": "comparison",
       "correct": true,
       "attempts": 1,
-      "elapsed_ms": 33888.302209
+      "elapsed_ms": 40138.548458
     },
     {
       "case_id": "ir_co_017",
@@ -2420,7 +2417,7 @@
       "prediction_label": "ambiguous",
       "correct": false,
       "attempts": 1,
-      "elapsed_ms": 34054.872875
+      "elapsed_ms": 40097.37
     },
     {
       "case_id": "ir_co_018",
@@ -2443,7 +2440,7 @@
       "prediction_label": "comparison",
       "correct": true,
       "attempts": 1,
-      "elapsed_ms": 34461.641958
+      "elapsed_ms": 40925.264625
     },
     {
       "case_id": "ir_co_019",
@@ -2466,7 +2463,7 @@
       "prediction_label": "comparison",
       "correct": true,
       "attempts": 1,
-      "elapsed_ms": 34853.88675
+      "elapsed_ms": 41283.483958
     },
     {
       "case_id": "ir_co_020",
@@ -2489,7 +2486,7 @@
       "prediction_label": "comparison",
       "correct": true,
       "attempts": 1,
-      "elapsed_ms": 35004.865625
+      "elapsed_ms": 41202.183125
     },
     {
       "case_id": "ir_co_021",
@@ -2512,7 +2509,7 @@
       "prediction_label": "comparison",
       "correct": true,
       "attempts": 1,
-      "elapsed_ms": 35320.866041
+      "elapsed_ms": 42098.763625
     },
     {
       "case_id": "ir_co_022",
@@ -2535,7 +2532,7 @@
       "prediction_label": "comparison",
       "correct": true,
       "attempts": 1,
-      "elapsed_ms": 36039.432666
+      "elapsed_ms": 42421.65175
     },
     {
       "case_id": "ir_co_023",
@@ -2558,7 +2555,7 @@
       "prediction_label": "comparison",
       "correct": true,
       "attempts": 1,
-      "elapsed_ms": 35957.666583
+      "elapsed_ms": 42460.108291
     },
     {
       "case_id": "ir_co_024",
@@ -2581,7 +2578,7 @@
       "prediction_label": "comparison",
       "correct": true,
       "attempts": 1,
-      "elapsed_ms": 36087.248458
+      "elapsed_ms": 43184.816375
     },
     {
       "case_id": "ir_co_025",
@@ -2604,7 +2601,7 @@
       "prediction_label": "information_extraction",
       "correct": false,
       "attempts": 1,
-      "elapsed_ms": 36936.125833
+      "elapsed_ms": 43728.533833
     },
     {
       "case_id": "ir_co_026",
@@ -2627,7 +2624,7 @@
       "prediction_label": "comparison",
       "correct": true,
       "attempts": 1,
-      "elapsed_ms": 36895.150208
+      "elapsed_ms": 43683.608208
     },
     {
       "case_id": "ir_co_027",
@@ -2650,7 +2647,7 @@
       "prediction_label": "comparison",
       "correct": true,
       "attempts": 1,
-      "elapsed_ms": 37206.160834
+      "elapsed_ms": 44428.002792
     },
     {
       "case_id": "ir_co_028",
@@ -2673,7 +2670,7 @@
       "prediction_label": "comparison",
       "correct": true,
       "attempts": 1,
-      "elapsed_ms": 37862.976
+      "elapsed_ms": 45043.663833
     },
     {
       "case_id": "ir_co_029",
@@ -2696,7 +2693,7 @@
       "prediction_label": "information_extraction",
       "correct": false,
       "attempts": 1,
-      "elapsed_ms": 38210.6435
+      "elapsed_ms": 44998.052292
     },
     {
       "case_id": "ir_co_030",
@@ -2719,7 +2716,7 @@
       "prediction_label": "comparison",
       "correct": true,
       "attempts": 1,
-      "elapsed_ms": 38262.922458
+      "elapsed_ms": 45493.865458
     },
     {
       "case_id": "ir_co_031",
@@ -2742,7 +2739,7 @@
       "prediction_label": "information_extraction",
       "correct": false,
       "attempts": 1,
-      "elapsed_ms": 38677.425416
+      "elapsed_ms": 46085.769833
     },
     {
       "case_id": "ir_co_032",
@@ -2756,7 +2753,7 @@
       "gold_label": "comparison",
       "gold_primary_intent": "comparison",
       "gold_route_status": "accepted",
-      "raw_response": "{\"decision\":\"select\",\"intent_id\":\"comparison\",\"sub_intents\":[]}",
+      "raw_response": "{\n  \"decision\": \"select\",\n  \"intent_id\": \"comparison\",\n  \"sub_intents\": []\n}",
       "decision": "select",
       "intent_id": "comparison",
       "sub_intents": [],
@@ -2765,7 +2762,7 @@
       "prediction_label": "comparison",
       "correct": true,
       "attempts": 1,
-      "elapsed_ms": 39549.637958
+      "elapsed_ms": 46335.917833
     },
     {
       "case_id": "ir_co_033",
@@ -2788,7 +2785,7 @@
       "prediction_label": "analysis",
       "correct": false,
       "attempts": 1,
-      "elapsed_ms": 39227.236875
+      "elapsed_ms": 46827.169916
     },
     {
       "case_id": "ir_co_034",
@@ -2811,7 +2808,7 @@
       "prediction_label": "comparison",
       "correct": true,
       "attempts": 1,
-      "elapsed_ms": 39590.854292
+      "elapsed_ms": 47229.35825
     },
     {
       "case_id": "ir_co_035",
@@ -2834,7 +2831,7 @@
       "prediction_label": "comparison",
       "correct": true,
       "attempts": 1,
-      "elapsed_ms": 40157.797375
+      "elapsed_ms": 47399.050209
     },
     {
       "case_id": "ir_co_036",
@@ -2857,7 +2854,7 @@
       "prediction_label": "comparison",
       "correct": true,
       "attempts": 1,
-      "elapsed_ms": 40472.065292
+      "elapsed_ms": 48008.199959
     },
     {
       "case_id": "ir_co_037",
@@ -2880,7 +2877,7 @@
       "prediction_label": "comparison",
       "correct": true,
       "attempts": 1,
-      "elapsed_ms": 40468.215834
+      "elapsed_ms": 48419.893583
     },
     {
       "case_id": "ir_co_038",
@@ -2903,7 +2900,7 @@
       "prediction_label": "comparison",
       "correct": true,
       "attempts": 1,
-      "elapsed_ms": 41141.77
+      "elapsed_ms": 48557.837084
     },
     {
       "case_id": "ir_co_039",
@@ -2926,7 +2923,7 @@
       "prediction_label": "comparison",
       "correct": true,
       "attempts": 1,
-      "elapsed_ms": 41374.459542
+      "elapsed_ms": 49203.078708
     },
     {
       "case_id": "ir_co_040",
@@ -2949,7 +2946,7 @@
       "prediction_label": "comparison",
       "correct": true,
       "attempts": 1,
-      "elapsed_ms": 41530.435542
+      "elapsed_ms": 49562.573375
     },
     {
       "case_id": "ir_an_001",
@@ -2972,7 +2969,7 @@
       "prediction_label": "analysis",
       "correct": true,
       "attempts": 1,
-      "elapsed_ms": 42120.540167
+      "elapsed_ms": 49815.086125
     },
     {
       "case_id": "ir_an_002",
@@ -2995,7 +2992,7 @@
       "prediction_label": "analysis",
       "correct": true,
       "attempts": 1,
-      "elapsed_ms": 42242.705125
+      "elapsed_ms": 50334.201125
     },
     {
       "case_id": "ir_an_003",
@@ -3018,7 +3015,7 @@
       "prediction_label": "analysis",
       "correct": true,
       "attempts": 1,
-      "elapsed_ms": 42402.191667
+      "elapsed_ms": 51153.312708
     },
     {
       "case_id": "ir_an_004",
@@ -3032,7 +3029,7 @@
       "gold_label": "analysis",
       "gold_primary_intent": "analysis",
       "gold_route_status": "accepted",
-      "raw_response": "{\n  \"decision\": \"select\",\n  \"intent_id\": \"analysis\",\n  \"sub_intents\": []\n}",
+      "raw_response": "{\n    \"decision\": \"select\",\n    \"intent_id\": \"analysis\",\n    \"sub_intents\": []\n}",
       "decision": "select",
       "intent_id": "analysis",
       "sub_intents": [],
@@ -3041,7 +3038,7 @@
       "prediction_label": "analysis",
       "correct": true,
       "attempts": 1,
-      "elapsed_ms": 42997.276125
+      "elapsed_ms": 51101.745292
     },
     {
       "case_id": "ir_an_005",
@@ -3064,7 +3061,7 @@
       "prediction_label": "analysis",
       "correct": true,
       "attempts": 1,
-      "elapsed_ms": 43089.426167
+      "elapsed_ms": 51623.91225
     },
     {
       "case_id": "ir_an_006",
@@ -3078,7 +3075,7 @@
       "gold_label": "analysis",
       "gold_primary_intent": "analysis",
       "gold_route_status": "accepted",
-      "raw_response": "{\n  \"decision\": \"select\",\n  \"intent_id\": \"analysis\",\n  \"sub_intents\": []\n}",
+      "raw_response": "{\"decision\":\"select\",\"intent_id\":\"analysis\",\"sub_intents\":[]}",
       "decision": "select",
       "intent_id": "analysis",
       "sub_intents": [],
@@ -3087,7 +3084,7 @@
       "prediction_label": "analysis",
       "correct": true,
       "attempts": 1,
-      "elapsed_ms": 43541.196791
+      "elapsed_ms": 52745.643917
     },
     {
       "case_id": "ir_an_007",
@@ -3101,7 +3098,7 @@
       "gold_label": "analysis",
       "gold_primary_intent": "analysis",
       "gold_route_status": "accepted",
-      "raw_response": "{\n  \"decision\": \"select\",\n  \"intent_id\": \"analysis\",\n  \"sub_intents\": []\n}",
+      "raw_response": "{\"decision\":\"select\",\"intent_id\":\"analysis\",\"sub_intents\":[]}",
       "decision": "select",
       "intent_id": "analysis",
       "sub_intents": [],
@@ -3110,7 +3107,7 @@
       "prediction_label": "analysis",
       "correct": true,
       "attempts": 1,
-      "elapsed_ms": 43984.506625
+      "elapsed_ms": 52571.161792
     },
     {
       "case_id": "ir_an_008",
@@ -3124,7 +3121,7 @@
       "gold_label": "analysis",
       "gold_primary_intent": "analysis",
       "gold_route_status": "accepted",
-      "raw_response": "{\n  \"decision\": \"select\",\n  \"intent_id\": \"analysis\",\n  \"sub_intents\": []\n}",
+      "raw_response": "{\"decision\":\"select\",\"intent_id\":\"analysis\",\"sub_intents\":[]}",
       "decision": "select",
       "intent_id": "analysis",
       "sub_intents": [],
@@ -3133,7 +3130,7 @@
       "prediction_label": "analysis",
       "correct": true,
       "attempts": 1,
-      "elapsed_ms": 44203.198833
+      "elapsed_ms": 52872.990167
     },
     {
       "case_id": "ir_an_009",
@@ -3156,7 +3153,7 @@
       "prediction_label": "analysis",
       "correct": true,
       "attempts": 1,
-      "elapsed_ms": 44472.268958
+      "elapsed_ms": 54516.581958
     },
     {
       "case_id": "ir_an_010",
@@ -3179,7 +3176,7 @@
       "prediction_label": "analysis",
       "correct": true,
       "attempts": 1,
-      "elapsed_ms": 45101.768417
+      "elapsed_ms": 54048.971667
     },
     {
       "case_id": "ir_an_011",
@@ -3202,7 +3199,7 @@
       "prediction_label": "analysis",
       "correct": true,
       "attempts": 1,
-      "elapsed_ms": 45332.480084
+      "elapsed_ms": 53983.018291
     },
     {
       "case_id": "ir_an_012",
@@ -3225,7 +3222,7 @@
       "prediction_label": "analysis",
       "correct": true,
       "attempts": 1,
-      "elapsed_ms": 45382.855875
+      "elapsed_ms": 55155.677625
     },
     {
       "case_id": "ir_an_013",
@@ -3248,7 +3245,7 @@
       "prediction_label": "analysis",
       "correct": true,
       "attempts": 1,
-      "elapsed_ms": 46158.567416
+      "elapsed_ms": 55280.830125
     },
     {
       "case_id": "ir_an_014",
@@ -3262,7 +3259,7 @@
       "gold_label": "analysis",
       "gold_primary_intent": "analysis",
       "gold_route_status": "accepted",
-      "raw_response": "{\"decision\":\"select\",\"intent_id\":\"analysis\",\"sub_intents\":[]}",
+      "raw_response": "{\n  \"decision\": \"select\",\n  \"intent_id\": \"analysis\",\n  \"sub_intents\": []\n}",
       "decision": "select",
       "intent_id": "analysis",
       "sub_intents": [],
@@ -3271,7 +3268,7 @@
       "prediction_label": "analysis",
       "correct": true,
       "attempts": 1,
-      "elapsed_ms": 46337.244417
+      "elapsed_ms": 55725.209375
     },
     {
       "case_id": "ir_an_015",
@@ -3294,7 +3291,7 @@
       "prediction_label": "analysis",
       "correct": true,
       "attempts": 1,
-      "elapsed_ms": 46528.456834
+      "elapsed_ms": 56351.274625
     },
     {
       "case_id": "ir_an_016",
@@ -3317,7 +3314,7 @@
       "prediction_label": "analysis",
       "correct": true,
       "attempts": 1,
-      "elapsed_ms": 47022.7625
+      "elapsed_ms": 56481.941
     },
     {
       "case_id": "ir_an_017",
@@ -3340,7 +3337,7 @@
       "prediction_label": "analysis",
       "correct": true,
       "attempts": 1,
-      "elapsed_ms": 47332.285125
+      "elapsed_ms": 56868.001041
     },
     {
       "case_id": "ir_an_018",
@@ -3354,7 +3351,7 @@
       "gold_label": "analysis",
       "gold_primary_intent": "analysis",
       "gold_route_status": "accepted",
-      "raw_response": "{\n  \"decision\": \"select\",\n  \"intent_id\": \"analysis\",\n  \"sub_intents\": []\n}",
+      "raw_response": "{\"decision\":\"select\",\"intent_id\":\"analysis\",\"sub_intents\":[]}",
       "decision": "select",
       "intent_id": "analysis",
       "sub_intents": [],
@@ -3363,7 +3360,7 @@
       "prediction_label": "analysis",
       "correct": true,
       "attempts": 1,
-      "elapsed_ms": 47453.592375
+      "elapsed_ms": 57597.246583
     },
     {
       "case_id": "ir_an_019",
@@ -3386,7 +3383,7 @@
       "prediction_label": "analysis",
       "correct": true,
       "attempts": 1,
-      "elapsed_ms": 48141.115541
+      "elapsed_ms": 57717.297625
     },
     {
       "case_id": "ir_an_020",
@@ -3409,7 +3406,7 @@
       "prediction_label": "analysis",
       "correct": true,
       "attempts": 1,
-      "elapsed_ms": 48498.101584
+      "elapsed_ms": 58163.695417
     },
     {
       "case_id": "ir_an_021",
@@ -3432,7 +3429,7 @@
       "prediction_label": "analysis",
       "correct": true,
       "attempts": 1,
-      "elapsed_ms": 48477.113625
+      "elapsed_ms": 58937.544417
     },
     {
       "case_id": "ir_an_022",
@@ -3455,7 +3452,7 @@
       "prediction_label": "analysis",
       "correct": true,
       "attempts": 1,
-      "elapsed_ms": 49089.774167
+      "elapsed_ms": 58895.3945
     },
     {
       "case_id": "ir_an_023",
@@ -3469,7 +3466,7 @@
       "gold_label": "analysis",
       "gold_primary_intent": "analysis",
       "gold_route_status": "accepted",
-      "raw_response": "{\n  \"decision\": \"select\",\n  \"intent_id\": \"analysis\",\n  \"sub_intents\": []\n}",
+      "raw_response": "{\"decision\":\"select\",\"intent_id\":\"analysis\",\"sub_intents\":[]}",
       "decision": "select",
       "intent_id": "analysis",
       "sub_intents": [],
@@ -3478,7 +3475,7 @@
       "prediction_label": "analysis",
       "correct": true,
       "attempts": 1,
-      "elapsed_ms": 49481.496459
+      "elapsed_ms": 59305.85075
     },
     {
       "case_id": "ir_an_024",
@@ -3501,7 +3498,7 @@
       "prediction_label": "analysis",
       "correct": true,
       "attempts": 1,
-      "elapsed_ms": 49432.735084
+      "elapsed_ms": 60079.19775
     },
     {
       "case_id": "ir_an_025",
@@ -3524,7 +3521,7 @@
       "prediction_label": "analysis",
       "correct": true,
       "attempts": 1,
-      "elapsed_ms": 49921.779083
+      "elapsed_ms": 60120.38925
     },
     {
       "case_id": "ir_an_026",
@@ -3547,7 +3544,7 @@
       "prediction_label": "analysis",
       "correct": true,
       "attempts": 1,
-      "elapsed_ms": 50507.116166
+      "elapsed_ms": 60487.557959
     },
     {
       "case_id": "ir_an_027",
@@ -3570,7 +3567,7 @@
       "prediction_label": "analysis",
       "correct": true,
       "attempts": 1,
-      "elapsed_ms": 50659.190167
+      "elapsed_ms": 61295.263167
     },
     {
       "case_id": "ir_an_028",
@@ -3593,7 +3590,7 @@
       "prediction_label": "analysis",
       "correct": true,
       "attempts": 1,
-      "elapsed_ms": 51066.385042
+      "elapsed_ms": 61189.275083
     },
     {
       "case_id": "ir_an_029",
@@ -3616,7 +3613,7 @@
       "prediction_label": "analysis",
       "correct": true,
       "attempts": 1,
-      "elapsed_ms": 52761.702667
+      "elapsed_ms": 61662.445875
     },
     {
       "case_id": "ir_an_030",
@@ -3639,7 +3636,7 @@
       "prediction_label": "analysis",
       "correct": true,
       "attempts": 1,
-      "elapsed_ms": 51578.821667
+      "elapsed_ms": 62298.17525
     },
     {
       "case_id": "ir_an_031",
@@ -3662,7 +3659,7 @@
       "prediction_label": "analysis",
       "correct": true,
       "attempts": 1,
-      "elapsed_ms": 52258.215
+      "elapsed_ms": 62370.743583
     },
     {
       "case_id": "ir_an_032",
@@ -3676,7 +3673,7 @@
       "gold_label": "analysis",
       "gold_primary_intent": "analysis",
       "gold_route_status": "accepted",
-      "raw_response": "{\"decision\":\"select\",\"intent_id\":\"analysis\",\"sub_intents\":[]}",
+      "raw_response": "{\n  \"decision\": \"select\",\n  \"intent_id\": \"analysis\",\n  \"sub_intents\": []\n}",
       "decision": "select",
       "intent_id": "analysis",
       "sub_intents": [],
@@ -3685,7 +3682,7 @@
       "prediction_label": "analysis",
       "correct": true,
       "attempts": 1,
-      "elapsed_ms": 52736.316167
+      "elapsed_ms": 62708.574792
     },
     {
       "case_id": "ir_an_033",
@@ -3699,7 +3696,7 @@
       "gold_label": "analysis",
       "gold_primary_intent": "analysis",
       "gold_route_status": "accepted",
-      "raw_response": "{\n  \"decision\": \"select\",\n  \"intent_id\": \"analysis\",\n  \"sub_intents\": []\n}",
+      "raw_response": "{\"decision\":\"select\",\"intent_id\":\"analysis\",\"sub_intents\":[]}",
       "decision": "select",
       "intent_id": "analysis",
       "sub_intents": [],
@@ -3708,7 +3705,7 @@
       "prediction_label": "analysis",
       "correct": true,
       "attempts": 1,
-      "elapsed_ms": 53505.202584
+      "elapsed_ms": 63407.0555
     },
     {
       "case_id": "ir_an_034",
@@ -3722,16 +3719,16 @@
       "gold_label": "analysis",
       "gold_primary_intent": "analysis",
       "gold_route_status": "accepted",
-      "raw_response": "{\n  \"decision\": \"select\",\n  \"intent_id\": \"analysis\",\n  \"sub_intents\": []\n}",
-      "decision": "select",
-      "intent_id": "analysis",
+      "raw_response": "{\n  \"decision\": \"clarify\",\n  \"intent_id\": \"\",\n  \"sub_intents\": []\n}",
+      "decision": "clarify",
+      "intent_id": "",
       "sub_intents": [],
       "valid_response": true,
       "validation_error": "",
-      "prediction_label": "analysis",
-      "correct": true,
+      "prediction_label": "unknown",
+      "correct": false,
       "attempts": 1,
-      "elapsed_ms": 53850.753333
+      "elapsed_ms": 63477.176917
     },
     {
       "case_id": "ir_an_035",
@@ -3754,7 +3751,7 @@
       "prediction_label": "analysis",
       "correct": true,
       "attempts": 1,
-      "elapsed_ms": 53828.946583
+      "elapsed_ms": 64003.948042
     },
     {
       "case_id": "ir_an_036",
@@ -3768,7 +3765,7 @@
       "gold_label": "analysis",
       "gold_primary_intent": "analysis",
       "gold_route_status": "accepted",
-      "raw_response": "{\"decision\":\"select\",\"intent_id\":\"analysis\",\"sub_intents\":[]}",
+      "raw_response": "{\n  \"decision\": \"select\",\n  \"intent_id\": \"analysis\",\n  \"sub_intents\": []\n}",
       "decision": "select",
       "intent_id": "analysis",
       "sub_intents": [],
@@ -3777,7 +3774,7 @@
       "prediction_label": "analysis",
       "correct": true,
       "attempts": 1,
-      "elapsed_ms": 54653.45375
+      "elapsed_ms": 64881.48525
     },
     {
       "case_id": "ir_an_037",
@@ -3800,7 +3797,7 @@
       "prediction_label": "analysis",
       "correct": true,
       "attempts": 1,
-      "elapsed_ms": 54947.469708
+      "elapsed_ms": 64841.353167
     },
     {
       "case_id": "ir_an_038",
@@ -3823,7 +3820,7 @@
       "prediction_label": "analysis",
       "correct": true,
       "attempts": 1,
-      "elapsed_ms": 54781.435083
+      "elapsed_ms": 65226.390542
     },
     {
       "case_id": "ir_an_039",
@@ -3846,7 +3843,7 @@
       "prediction_label": "analysis",
       "correct": true,
       "attempts": 1,
-      "elapsed_ms": 55479.692083
+      "elapsed_ms": 66166.4205
     },
     {
       "case_id": "ir_an_040",
@@ -3860,11 +3857,12 @@
       "gold_label": "analysis",
       "gold_primary_intent": "analysis",
       "gold_route_status": "accepted",
-      "raw_response": "{\n  \"decision\": \"planner\",\n  \"intent_id\": \"\",\n  \"sub_intents\": [\"information_extraction\", \"analysis\"]\n}",
+      "raw_response": "{\"decision\":\"planner\",\"intent_id\":\"\",\"sub_intents\":[\"information_extraction\",\"metric_calculation\",\"analysis\"]}",
       "decision": "planner",
       "intent_id": "",
       "sub_intents": [
         "information_extraction",
+        "metric_calculation",
         "analysis"
       ],
       "valid_response": true,
@@ -3872,7 +3870,7 @@
       "prediction_label": "ambiguous",
       "correct": false,
       "attempts": 1,
-      "elapsed_ms": 55997.518292
+      "elapsed_ms": 66215.706125
     },
     {
       "case_id": "ir_su_001",
@@ -3895,7 +3893,7 @@
       "prediction_label": "summarization",
       "correct": true,
       "attempts": 1,
-      "elapsed_ms": 55916.915125
+      "elapsed_ms": 66276.2455
     },
     {
       "case_id": "ir_su_002",
@@ -3918,7 +3916,7 @@
       "prediction_label": "summarization",
       "correct": true,
       "attempts": 1,
-      "elapsed_ms": 56418.953334
+      "elapsed_ms": 67445.067208
     },
     {
       "case_id": "ir_su_003",
@@ -3941,7 +3939,7 @@
       "prediction_label": "summarization",
       "correct": true,
       "attempts": 1,
-      "elapsed_ms": 56852.52575
+      "elapsed_ms": 67369.701875
     },
     {
       "case_id": "ir_su_004",
@@ -3964,7 +3962,7 @@
       "prediction_label": "summarization",
       "correct": true,
       "attempts": 1,
-      "elapsed_ms": 56925.9345
+      "elapsed_ms": 67403.477333
     },
     {
       "case_id": "ir_su_005",
@@ -3987,7 +3985,7 @@
       "prediction_label": "summarization",
       "correct": true,
       "attempts": 1,
-      "elapsed_ms": 57440.492458
+      "elapsed_ms": 68538.026292
     },
     {
       "case_id": "ir_su_006",
@@ -4010,7 +4008,7 @@
       "prediction_label": "summarization",
       "correct": true,
       "attempts": 1,
-      "elapsed_ms": 57692.381625
+      "elapsed_ms": 68834.1635
     },
     {
       "case_id": "ir_su_007",
@@ -4033,7 +4031,7 @@
       "prediction_label": "summarization",
       "correct": true,
       "attempts": 1,
-      "elapsed_ms": 57864.804917
+      "elapsed_ms": 68643.528
     },
     {
       "case_id": "ir_su_008",
@@ -4056,7 +4054,7 @@
       "prediction_label": "summarization",
       "correct": true,
       "attempts": 1,
-      "elapsed_ms": 58666.030375
+      "elapsed_ms": 69730.171792
     },
     {
       "case_id": "ir_su_009",
@@ -4079,7 +4077,7 @@
       "prediction_label": "summarization",
       "correct": true,
       "attempts": 1,
-      "elapsed_ms": 59509.067083
+      "elapsed_ms": 69778.310208
     },
     {
       "case_id": "ir_su_010",
@@ -4102,7 +4100,7 @@
       "prediction_label": "summarization",
       "correct": true,
       "attempts": 1,
-      "elapsed_ms": 59051.090167
+      "elapsed_ms": 69930.17525
     },
     {
       "case_id": "ir_su_011",
@@ -4116,16 +4114,16 @@
       "gold_label": "summarization",
       "gold_primary_intent": "summarization",
       "gold_route_status": "accepted",
-      "raw_response": "{\"decision\":\"select\",\"intent_id\":\"information_extraction\",\"sub_intents\":[]}",
+      "raw_response": "{\"decision\":\"select\",\"intent_id\":\"summarization\",\"sub_intents\":[]}",
       "decision": "select",
-      "intent_id": "information_extraction",
+      "intent_id": "summarization",
       "sub_intents": [],
       "valid_response": true,
       "validation_error": "",
-      "prediction_label": "information_extraction",
-      "correct": false,
+      "prediction_label": "summarization",
+      "correct": true,
       "attempts": 1,
-      "elapsed_ms": 59811.606458
+      "elapsed_ms": 70854.473708
     },
     {
       "case_id": "ir_su_012",
@@ -4148,7 +4146,7 @@
       "prediction_label": "summarization",
       "correct": true,
       "attempts": 1,
-      "elapsed_ms": 60026.128167
+      "elapsed_ms": 70880.77425
     },
     {
       "case_id": "ir_su_013",
@@ -4171,7 +4169,7 @@
       "prediction_label": "summarization",
       "correct": true,
       "attempts": 1,
-      "elapsed_ms": 60380.223875
+      "elapsed_ms": 71040.32525
     },
     {
       "case_id": "ir_su_014",
@@ -4194,7 +4192,7 @@
       "prediction_label": "summarization",
       "correct": true,
       "attempts": 1,
-      "elapsed_ms": 60924.261875
+      "elapsed_ms": 72068.561375
     },
     {
       "case_id": "ir_su_015",
@@ -4217,7 +4215,7 @@
       "prediction_label": "summarization",
       "correct": true,
       "attempts": 1,
-      "elapsed_ms": 60966.180917
+      "elapsed_ms": 72110.813375
     },
     {
       "case_id": "ir_su_016",
@@ -4240,7 +4238,7 @@
       "prediction_label": "summarization",
       "correct": true,
       "attempts": 1,
-      "elapsed_ms": 61390.055
+      "elapsed_ms": 72575.582625
     },
     {
       "case_id": "ir_su_017",
@@ -4263,7 +4261,7 @@
       "prediction_label": "summarization",
       "correct": true,
       "attempts": 1,
-      "elapsed_ms": 61932.328833
+      "elapsed_ms": 73291.181625
     },
     {
       "case_id": "ir_su_018",
@@ -4286,7 +4284,7 @@
       "prediction_label": "summarization",
       "correct": true,
       "attempts": 1,
-      "elapsed_ms": 61974.617875
+      "elapsed_ms": 73395.887208
     },
     {
       "case_id": "ir_su_019",
@@ -4309,7 +4307,7 @@
       "prediction_label": "summarization",
       "correct": true,
       "attempts": 1,
-      "elapsed_ms": 62471.170458
+      "elapsed_ms": 73806.65
     },
     {
       "case_id": "ir_su_020",
@@ -4332,7 +4330,7 @@
       "prediction_label": "summarization",
       "correct": true,
       "attempts": 1,
-      "elapsed_ms": 63039.469
+      "elapsed_ms": 74522.822709
     },
     {
       "case_id": "ir_su_021",
@@ -4355,7 +4353,7 @@
       "prediction_label": "summarization",
       "correct": true,
       "attempts": 1,
-      "elapsed_ms": 63142.772458
+      "elapsed_ms": 74575.660125
     },
     {
       "case_id": "ir_su_022",
@@ -4378,7 +4376,7 @@
       "prediction_label": "summarization",
       "correct": true,
       "attempts": 1,
-      "elapsed_ms": 63599.244209
+      "elapsed_ms": 74960.999625
     },
     {
       "case_id": "ir_su_023",
@@ -4401,7 +4399,7 @@
       "prediction_label": "summarization",
       "correct": true,
       "attempts": 1,
-      "elapsed_ms": 64158.556958
+      "elapsed_ms": 75574.994542
     },
     {
       "case_id": "ir_su_024",
@@ -4424,7 +4422,7 @@
       "prediction_label": "summarization",
       "correct": true,
       "attempts": 1,
-      "elapsed_ms": 64117.564583
+      "elapsed_ms": 75532.858708
     },
     {
       "case_id": "ir_su_025",
@@ -4438,16 +4436,16 @@
       "gold_label": "summarization",
       "gold_primary_intent": "summarization",
       "gold_route_status": "accepted",
-      "raw_response": "{\"decision\":\"select\",\"intent_id\":\"summarization\",\"sub_intents\":[]}",
+      "raw_response": "{\"decision\":\"select\",\"intent_id\":\"information_extraction\",\"sub_intents\":[]}",
       "decision": "select",
-      "intent_id": "summarization",
+      "intent_id": "information_extraction",
       "sub_intents": [],
       "valid_response": true,
       "validation_error": "",
-      "prediction_label": "summarization",
-      "correct": true,
+      "prediction_label": "information_extraction",
+      "correct": false,
       "attempts": 1,
-      "elapsed_ms": 64507.185917
+      "elapsed_ms": 76162.748125
     },
     {
       "case_id": "ir_su_026",
@@ -4470,7 +4468,7 @@
       "prediction_label": "summarization",
       "correct": true,
       "attempts": 1,
-      "elapsed_ms": 65072.544292
+      "elapsed_ms": 76645.209
     },
     {
       "case_id": "ir_su_027",
@@ -4493,7 +4491,7 @@
       "prediction_label": "summarization",
       "correct": true,
       "attempts": 1,
-      "elapsed_ms": 65031.217458
+      "elapsed_ms": 76581.537709
     },
     {
       "case_id": "ir_su_028",
@@ -4516,7 +4514,7 @@
       "prediction_label": "summarization",
       "correct": true,
       "attempts": 1,
-      "elapsed_ms": 65407.975625
+      "elapsed_ms": 77367.793291
     },
     {
       "case_id": "ir_su_029",
@@ -4539,7 +4537,7 @@
       "prediction_label": "summarization",
       "correct": true,
       "attempts": 1,
-      "elapsed_ms": 66391.389459
+      "elapsed_ms": 77759.019584
     },
     {
       "case_id": "ir_su_030",
@@ -4562,7 +4560,7 @@
       "prediction_label": "summarization",
       "correct": true,
       "attempts": 1,
-      "elapsed_ms": 66327.287625
+      "elapsed_ms": 77815.222042
     },
     {
       "case_id": "ir_su_031",
@@ -4585,7 +4583,7 @@
       "prediction_label": "summarization",
       "correct": true,
       "attempts": 1,
-      "elapsed_ms": 66333.934333
+      "elapsed_ms": 78561.451958
     },
     {
       "case_id": "ir_su_032",
@@ -4599,7 +4597,7 @@
       "gold_label": "summarization",
       "gold_primary_intent": "summarization",
       "gold_route_status": "accepted",
-      "raw_response": "{\n  \"decision\": \"select\",\n  \"intent_id\": \"summarization\",\n  \"sub_intents\": []\n}",
+      "raw_response": "{\"decision\":\"select\",\"intent_id\":\"summarization\",\"sub_intents\":[]}",
       "decision": "select",
       "intent_id": "summarization",
       "sub_intents": [],
@@ -4608,7 +4606,7 @@
       "prediction_label": "summarization",
       "correct": true,
       "attempts": 1,
-      "elapsed_ms": 67414.098417
+      "elapsed_ms": 79070.114125
     },
     {
       "case_id": "ir_su_033",
@@ -4631,7 +4629,7 @@
       "prediction_label": "summarization",
       "correct": true,
       "attempts": 1,
-      "elapsed_ms": 67266.882083
+      "elapsed_ms": 79028.109875
     },
     {
       "case_id": "ir_su_034",
@@ -4657,7 +4655,7 @@
       "prediction_label": "ambiguous",
       "correct": false,
       "attempts": 1,
-      "elapsed_ms": 67449.640917
+      "elapsed_ms": 79740.788709
     },
     {
       "case_id": "ir_su_035",
@@ -4680,7 +4678,7 @@
       "prediction_label": "summarization",
       "correct": true,
       "attempts": 1,
-      "elapsed_ms": 68208.899542
+      "elapsed_ms": 80170.733958
     },
     {
       "case_id": "ir_su_036",
@@ -4703,7 +4701,7 @@
       "prediction_label": "summarization",
       "correct": true,
       "attempts": 1,
-      "elapsed_ms": 68415.961916
+      "elapsed_ms": 80221.594959
     },
     {
       "case_id": "ir_su_037",
@@ -4726,7 +4724,7 @@
       "prediction_label": "summarization",
       "correct": true,
       "attempts": 1,
-      "elapsed_ms": 68449.083792
+      "elapsed_ms": 80931.118959
     },
     {
       "case_id": "ir_su_038",
@@ -4749,7 +4747,7 @@
       "prediction_label": "summarization",
       "correct": true,
       "attempts": 1,
-      "elapsed_ms": 69086.054125
+      "elapsed_ms": 81395.646375
     },
     {
       "case_id": "ir_su_039",
@@ -4772,7 +4770,7 @@
       "prediction_label": "summarization",
       "correct": true,
       "attempts": 1,
-      "elapsed_ms": 69821.311708
+      "elapsed_ms": 81340.914292
     },
     {
       "case_id": "ir_su_040",
@@ -4795,7 +4793,7 @@
       "prediction_label": "summarization",
       "correct": true,
       "attempts": 1,
-      "elapsed_ms": 69528.536708
+      "elapsed_ms": 82082.29525
     },
     {
       "case_id": "ir_am_001",
@@ -4808,7 +4806,7 @@
       "gold_label": "ambiguous",
       "gold_primary_intent": null,
       "gold_route_status": "ambiguous",
-      "raw_response": "{\n  \"decision\": \"planner\",\n  \"intent_id\": \"\",\n  \"sub_intents\": [\"comparison\", \"analysis\"]\n}",
+      "raw_response": "{\"decision\":\"planner\",\"intent_id\":\"\",\"sub_intents\":[\"comparison\",\"analysis\"]}",
       "decision": "planner",
       "intent_id": "",
       "sub_intents": [
@@ -4820,7 +4818,7 @@
       "prediction_label": "ambiguous",
       "correct": true,
       "attempts": 1,
-      "elapsed_ms": 69940.299792
+      "elapsed_ms": 82703.519
     },
     {
       "case_id": "ir_am_002",
@@ -4845,7 +4843,7 @@
       "prediction_label": "ambiguous",
       "correct": true,
       "attempts": 1,
-      "elapsed_ms": 70568.504167
+      "elapsed_ms": 82619.43225
     },
     {
       "case_id": "ir_am_003",
@@ -4870,7 +4868,7 @@
       "prediction_label": "ambiguous",
       "correct": true,
       "attempts": 1,
-      "elapsed_ms": 70853.1835
+      "elapsed_ms": 83363.700916
     },
     {
       "case_id": "ir_am_004",
@@ -4883,7 +4881,7 @@
       "gold_label": "ambiguous",
       "gold_primary_intent": null,
       "gold_route_status": "ambiguous",
-      "raw_response": "{\"decision\":\"planner\",\"intent_id\":\"\",\"sub_intents\":[\"summarization\",\"analysis\"]}",
+      "raw_response": "{\n  \"decision\": \"planner\",\n  \"intent_id\": \"\",\n  \"sub_intents\": [\"summarization\", \"analysis\"]\n}",
       "decision": "planner",
       "intent_id": "",
       "sub_intents": [
@@ -4895,7 +4893,7 @@
       "prediction_label": "ambiguous",
       "correct": true,
       "attempts": 1,
-      "elapsed_ms": 71048.592875
+      "elapsed_ms": 84001.948209
     },
     {
       "case_id": "ir_am_005",
@@ -4922,7 +4920,7 @@
       "prediction_label": "ambiguous",
       "correct": true,
       "attempts": 1,
-      "elapsed_ms": 71623.667291
+      "elapsed_ms": 83908.862833
     },
     {
       "case_id": "ir_am_006",
@@ -4936,7 +4934,7 @@
       "gold_label": "ambiguous",
       "gold_primary_intent": null,
       "gold_route_status": "ambiguous",
-      "raw_response": "{\n  \"decision\": \"planner\",\n  \"intent_id\": \"\",\n  \"sub_intents\": [\"information_extraction\", \"analysis\"]\n}",
+      "raw_response": "{\"decision\":\"planner\",\"intent_id\":\"\",\"sub_intents\":[\"information_extraction\",\"analysis\"]}",
       "decision": "planner",
       "intent_id": "",
       "sub_intents": [
@@ -4948,7 +4946,7 @@
       "prediction_label": "ambiguous",
       "correct": true,
       "attempts": 1,
-      "elapsed_ms": 71856.164417
+      "elapsed_ms": 84583.589625
     },
     {
       "case_id": "ir_am_007",
@@ -4973,7 +4971,7 @@
       "prediction_label": "ambiguous",
       "correct": true,
       "attempts": 1,
-      "elapsed_ms": 71992.9175
+      "elapsed_ms": 85131.554208
     },
     {
       "case_id": "ir_am_008",
@@ -4999,7 +4997,7 @@
       "prediction_label": "ambiguous",
       "correct": true,
       "attempts": 1,
-      "elapsed_ms": 72522.756959
+      "elapsed_ms": 85215.064
     },
     {
       "case_id": "ir_am_009",
@@ -5025,7 +5023,7 @@
       "prediction_label": "ambiguous",
       "correct": true,
       "attempts": 1,
-      "elapsed_ms": 72754.819375
+      "elapsed_ms": 85952.661958
     },
     {
       "case_id": "ir_am_010",
@@ -5051,7 +5049,7 @@
       "prediction_label": "ambiguous",
       "correct": true,
       "attempts": 1,
-      "elapsed_ms": 73154.605375
+      "elapsed_ms": 86254.448625
     },
     {
       "case_id": "ir_am_011",
@@ -5077,7 +5075,7 @@
       "prediction_label": "ambiguous",
       "correct": true,
       "attempts": 1,
-      "elapsed_ms": 73461.667625
+      "elapsed_ms": 86418.038583
     },
     {
       "case_id": "ir_am_012",
@@ -5104,7 +5102,7 @@
       "prediction_label": "ambiguous",
       "correct": true,
       "attempts": 1,
-      "elapsed_ms": 73751.538791
+      "elapsed_ms": 87180.638167
     },
     {
       "case_id": "ir_am_013",
@@ -5130,7 +5128,7 @@
       "prediction_label": "ambiguous",
       "correct": true,
       "attempts": 1,
-      "elapsed_ms": 74052.621416
+      "elapsed_ms": 87583.697791
     },
     {
       "case_id": "ir_am_014",
@@ -5156,7 +5154,7 @@
       "prediction_label": "ambiguous",
       "correct": true,
       "attempts": 1,
-      "elapsed_ms": 74463.454333
+      "elapsed_ms": 87625.647541
     },
     {
       "case_id": "ir_am_015",
@@ -5182,7 +5180,7 @@
       "prediction_label": "ambiguous",
       "correct": true,
       "attempts": 1,
-      "elapsed_ms": 74656.276042
+      "elapsed_ms": 88471.683708
     },
     {
       "case_id": "ir_am_016",
@@ -5196,7 +5194,7 @@
       "gold_label": "ambiguous",
       "gold_primary_intent": null,
       "gold_route_status": "ambiguous",
-      "raw_response": "{\"decision\":\"planner\",\"intent_id\":\"\",\"sub_intents\":[\"information_extraction\",\"analysis\"]}",
+      "raw_response": "{\n  \"decision\": \"planner\",\n  \"intent_id\": \"\",\n  \"sub_intents\": [\"information_extraction\", \"analysis\"]\n}",
       "decision": "planner",
       "intent_id": "",
       "sub_intents": [
@@ -5208,7 +5206,7 @@
       "prediction_label": "ambiguous",
       "correct": true,
       "attempts": 1,
-      "elapsed_ms": 75041.965
+      "elapsed_ms": 88944.262583
     },
     {
       "case_id": "ir_am_017",
@@ -5222,7 +5220,7 @@
       "gold_label": "ambiguous",
       "gold_primary_intent": null,
       "gold_route_status": "ambiguous",
-      "raw_response": "{\"decision\":\"planner\",\"intent_id\":\"\",\"sub_intents\":[\"comparison\",\"analysis\"]}",
+      "raw_response": "{\n  \"decision\": \"planner\",\n  \"intent_id\": \"\",\n  \"sub_intents\": [\"comparison\", \"analysis\"]\n}",
       "decision": "planner",
       "intent_id": "",
       "sub_intents": [
@@ -5234,7 +5232,7 @@
       "prediction_label": "ambiguous",
       "correct": true,
       "attempts": 1,
-      "elapsed_ms": 75465.150291
+      "elapsed_ms": 88886.287917
     },
     {
       "case_id": "ir_am_018",
@@ -5260,7 +5258,7 @@
       "prediction_label": "ambiguous",
       "correct": true,
       "attempts": 1,
-      "elapsed_ms": 75560.644417
+      "elapsed_ms": 89593.931458
     },
     {
       "case_id": "ir_am_019",
@@ -5287,7 +5285,7 @@
       "prediction_label": "ambiguous",
       "correct": true,
       "attempts": 1,
-      "elapsed_ms": 76055.539833
+      "elapsed_ms": 90102.758708
     },
     {
       "case_id": "ir_am_020",
@@ -5314,7 +5312,7 @@
       "prediction_label": "ambiguous",
       "correct": true,
       "attempts": 1,
-      "elapsed_ms": 76418.082083
+      "elapsed_ms": 90294.544417
     },
     {
       "case_id": "ir_un_001",
@@ -5336,7 +5334,7 @@
       "prediction_label": "unknown",
       "correct": true,
       "attempts": 1,
-      "elapsed_ms": 76495.228458
+      "elapsed_ms": 90885.682167
     },
     {
       "case_id": "ir_un_002",
@@ -5358,7 +5356,7 @@
       "prediction_label": "unknown",
       "correct": true,
       "attempts": 1,
-      "elapsed_ms": 76913.3245
+      "elapsed_ms": 91217.758084
     },
     {
       "case_id": "ir_un_003",
@@ -5380,7 +5378,7 @@
       "prediction_label": "unknown",
       "correct": true,
       "attempts": 1,
-      "elapsed_ms": 77309.05775
+      "elapsed_ms": 91589.048834
     },
     {
       "case_id": "ir_un_004",
@@ -5402,7 +5400,7 @@
       "prediction_label": "unknown",
       "correct": true,
       "attempts": 1,
-      "elapsed_ms": 77606.869958
+      "elapsed_ms": 92045.130041
     },
     {
       "case_id": "ir_un_005",
@@ -5424,7 +5422,7 @@
       "prediction_label": "unknown",
       "correct": true,
       "attempts": 1,
-      "elapsed_ms": 77864.365958
+      "elapsed_ms": 92399.772625
     },
     {
       "case_id": "ir_un_006",
@@ -5447,7 +5445,7 @@
       "prediction_label": "unknown",
       "correct": true,
       "attempts": 1,
-      "elapsed_ms": 78197.810875
+      "elapsed_ms": 92687.535333
     },
     {
       "case_id": "ir_un_007",
@@ -5469,7 +5467,7 @@
       "prediction_label": "unknown",
       "correct": true,
       "attempts": 1,
-      "elapsed_ms": 78622.981375
+      "elapsed_ms": 93206.628542
     },
     {
       "case_id": "ir_un_008",
@@ -5491,7 +5489,7 @@
       "prediction_label": "unknown",
       "correct": true,
       "attempts": 1,
-      "elapsed_ms": 78709.81275
+      "elapsed_ms": 93522.04675
     },
     {
       "case_id": "ir_un_009",
@@ -5513,7 +5511,7 @@
       "prediction_label": "unknown",
       "correct": true,
       "attempts": 1,
-      "elapsed_ms": 79175.23025
+      "elapsed_ms": 93876.0955
     },
     {
       "case_id": "ir_un_010",
@@ -5536,7 +5534,7 @@
       "prediction_label": "unknown",
       "correct": true,
       "attempts": 1,
-      "elapsed_ms": 79634.725208
+      "elapsed_ms": 94371.906625
     },
     {
       "case_id": "ir_un_011",
@@ -5558,7 +5556,7 @@
       "prediction_label": "unknown",
       "correct": true,
       "attempts": 1,
-      "elapsed_ms": 79591.400375
+      "elapsed_ms": 94733.282125
     },
     {
       "case_id": "ir_un_012",
@@ -5580,7 +5578,7 @@
       "prediction_label": "unknown",
       "correct": true,
       "attempts": 1,
-      "elapsed_ms": 80087.687375
+      "elapsed_ms": 95122.169333
     },
     {
       "case_id": "ir_un_013",
@@ -5603,7 +5601,7 @@
       "prediction_label": "unknown",
       "correct": true,
       "attempts": 1,
-      "elapsed_ms": 80487.785083
+      "elapsed_ms": 95496.271334
     },
     {
       "case_id": "ir_un_014",
@@ -5625,7 +5623,7 @@
       "prediction_label": "unknown",
       "correct": true,
       "attempts": 1,
-      "elapsed_ms": 80530.452125
+      "elapsed_ms": 95865.787167
     },
     {
       "case_id": "ir_un_015",
@@ -5647,7 +5645,7 @@
       "prediction_label": "unknown",
       "correct": true,
       "attempts": 1,
-      "elapsed_ms": 81169.054667
+      "elapsed_ms": 96282.347292
     },
     {
       "case_id": "ir_un_016",
@@ -5669,7 +5667,7 @@
       "prediction_label": "unknown",
       "correct": true,
       "attempts": 1,
-      "elapsed_ms": 81617.493958
+      "elapsed_ms": 96646.997166
     },
     {
       "case_id": "ir_un_017",
@@ -5692,7 +5690,7 @@
       "prediction_label": "unknown",
       "correct": true,
       "attempts": 1,
-      "elapsed_ms": 81658.300792
+      "elapsed_ms": 97084.096958
     },
     {
       "case_id": "ir_un_018",
@@ -5714,7 +5712,7 @@
       "prediction_label": "unknown",
       "correct": true,
       "attempts": 1,
-      "elapsed_ms": 82111.804209
+      "elapsed_ms": 97415.481042
     },
     {
       "case_id": "ir_un_019",
@@ -5737,7 +5735,7 @@
       "prediction_label": "unknown",
       "correct": true,
       "attempts": 1,
-      "elapsed_ms": 82718.794583
+      "elapsed_ms": 97808.059625
     },
     {
       "case_id": "ir_un_020",
@@ -5760,7 +5758,7 @@
       "prediction_label": "unknown",
       "correct": true,
       "attempts": 1,
-      "elapsed_ms": 82806.899958
+      "elapsed_ms": 98235.335583
     }
   ]
 }

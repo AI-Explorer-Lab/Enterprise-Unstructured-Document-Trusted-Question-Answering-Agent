@@ -18,6 +18,7 @@ if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
 from service.llm import get_llm_service  # noqa: E402
+from service.agent.intent_gate import ZERO_SHOT_INTENT_SYSTEM_PROMPT  # noqa: E402
 
 
 PRIMARY_INTENTS = (
@@ -30,30 +31,7 @@ PRIMARY_INTENTS = (
 DECISIONS = ("select", "planner", "clarify", "reject")
 ALL_LABELS = (*PRIMARY_INTENTS, "ambiguous", "unknown", "invalid")
 
-SYSTEM_PROMPT = """You are the intent gate for a financial-report question-answering system.
-Classify the entire user request, not merely its first clause.
-
-Supported primary intents:
-- information_extraction: retrieve an explicitly disclosed value, fact, name, passage, page, or list.
-- metric_calculation: calculate a derived number, ratio, rate, difference, or change.
-- comparison: compare periods, companies, business segments, documents, or values.
-- analysis: explain causes, effects, risks, sustainability, meaning, or quality.
-- summarization: summarize, outline, consolidate, or extract the main points.
-
-Choose exactly one decision:
-- select: one primary intent is sufficient to represent the whole requested task.
-- planner: the request contains two or more distinct supported operations or dependent steps.
-- clarify: the request is financial-report related or referential, but lacks enough information to
-  determine the requested operation without missing conversation context.
-- reject: the request is outside the supported financial-report QA scope.
-
-Do not assume any previous conversation. Output exactly one JSON object without Markdown or
-explanation:
-{"decision":"select|planner|clarify|reject","intent_id":"one supported primary intent or empty string","sub_intents":["zero or more supported primary intents"]}
-
-For select, intent_id must contain exactly one supported primary intent.
-For planner, sub_intents must contain at least two distinct supported primary intents in execution order.
-For clarify or reject, intent_id must be empty and sub_intents must be empty."""
+SYSTEM_PROMPT = ZERO_SHOT_INTENT_SYSTEM_PROMPT
 
 
 def _read_jsonl(path: Path) -> list[dict[str, Any]]:
