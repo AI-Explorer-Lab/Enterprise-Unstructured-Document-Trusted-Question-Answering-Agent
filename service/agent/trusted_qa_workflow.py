@@ -29,7 +29,6 @@ from service.agent.query_expander import FIXED_QUERY_VARIANT_TOTAL, expand_queri
 from service.agent.query_planner import build_query_plan, is_decomposed_plan
 from service.agent.retrieval_scope import RetrievalScope, resolve_retrieval_scope
 from service.agent.skill_registry import DEFAULT_SKILL_REGISTRY
-from service.agent.structured_understanding import SemanticSkillRouter
 from service.embedding.embedding_service import EmbeddingService, build_embedding_provider_from_config
 from service.evaluation.ragas_evaluator import evaluate_qa_result
 from service.llm import get_llm_service
@@ -273,10 +272,8 @@ class TrustedQAWorkflow:
         self.intent_agent = IntentUnderstandingAgent(self.llm_service)
         self.slot_agent = SlotFillingAgent(self.llm_service)
         self.embedding_service = EmbeddingService(provider=build_embedding_provider_from_config(self.config))
-        self.semantic_router = SemanticSkillRouter(self.embedding_service)
         self.understanding_agent = QuestionUnderstandingAgent(
             self.llm_service,
-            semantic_router=self.semantic_router,
             company_registry=self.company_registry,
         )
         self.plan_validator = PlanValidator(
@@ -539,6 +536,19 @@ class TrustedQAWorkflow:
         slots: Mapping[str, Any],
         conversation_context: Mapping[str, Any] | None = None,
     ) -> Dict[str, Any]:
+        intent_decision = str(slots.get("intent_decision") or "").strip().lower()
+        if query_type == "ambiguous_query" and intent_decision in {"clarify", "reject"}:
+            return {
+                "plan": {},
+                "validation": {
+                    "valid": True,
+                    "executable": False,
+                    "errors": [],
+                    "missing_required_slots": [],
+                },
+                "source": f"intent_gate_{intent_decision}",
+                "repair_attempted": False,
+            }
         if query_type == "ambiguous_query":
             return {
                 "plan": {},
@@ -609,6 +619,8 @@ class TrustedQAWorkflow:
 
     @staticmethod
     def _apply_scope_clarify(clarify: Dict[str, Any], scope: RetrievalScope, slots: Dict[str, Any]) -> Dict[str, Any]:
+        if str((clarify or {}).get("decision") or "").strip().lower() == "refuse":
+            return clarify
         if not scope.should_clarify:
             return clarify
         payload = dict(clarify or {})
@@ -1347,7 +1359,21 @@ class TrustedQAWorkflow:
         slots: Dict[str, Any],
         selected_skill: Any,
         planner_result: Mapping[str, Any] | None = None,
+        intent_trace: Mapping[str, Any] | None = None,
     ) -> Dict[str, Any]:
+        intent_decision = str(
+            (intent_trace or {}).get("intent_decision")
+            or slots.get("intent_decision")
+            or ""
+        ).strip().lower()
+        if intent_decision == "reject":
+            return {
+                "decision": "refuse",
+                "missing_slots": [],
+                "clarify_question": "",
+                "reason": "out_of_scope_intent",
+                "slots": slots,
+            }
         missing_slots = selected_skill.get_missing_slots(slots) if selected_skill is not None else []
         planner_validation = (
             planner_result.get("validation")
@@ -1548,18 +1574,36 @@ class TrustedQAWorkflow:
             slots,
             selected_skill,
             planner_result=state.get("planner_result") or {},
+            intent_trace=state.get("intent_trace") or {},
         )
         clarify = self._apply_scope_clarify(clarify, scope, slots)
-        scope_refuse_gate = self._scope_refuse_gate(scope) if scope.should_refuse and clarify.get("decision") != "clarify" else {}
+        intent_refuse_gate = (
+            {
+                "decision": "refuse",
+                "reason": "out_of_scope_intent",
+                "message": "The request is outside the supported financial-report QA scope.",
+            }
+            if clarify.get("decision") == "refuse"
+            else {}
+        )
+        scope_refuse_gate = (
+            self._scope_refuse_gate(scope)
+            if not intent_refuse_gate
+            and scope.should_refuse
+            and clarify.get("decision") != "clarify"
+            else {}
+        )
+        refuse_gate = intent_refuse_gate or scope_refuse_gate
         observations = list(state.get("observations") or [])
         observations.append(
             {
                 "phase": "clarify_gate",
                 "slots": slots,
                 "missing_slots": clarify.get("missing_slots") or [],
-                "decision": "refuse" if scope_refuse_gate else (clarify.get("decision") or "answer"),
+                "decision": "refuse" if refuse_gate else (clarify.get("decision") or "answer"),
                 "retrieval_scope": scope.as_dict(),
                 "scope_refuse": scope_refuse_gate,
+                "intent_refuse": intent_refuse_gate,
                 "duration_ms": _duration_ms(started_at),
             }
         )
@@ -1571,9 +1615,18 @@ class TrustedQAWorkflow:
                 "slots": slots,
                 "retrieval_scope": scope.as_dict(),
                 "metadata_filter": scope.metadata_filter(),
-                "gate": scope_refuse_gate or state.get("gate") or {},
-                "evidence": [] if scope_refuse_gate else state.get("evidence"),
-                "retrieval_result": {"retrieval_trace": {"scope_refuse": scope_refuse_gate, "retrieval_scope": scope.as_dict()}, "rerank_trace": {}} if scope_refuse_gate else state.get("retrieval_result"),
+                "gate": refuse_gate or state.get("gate") or {},
+                "evidence": [] if refuse_gate else state.get("evidence"),
+                "retrieval_result": {
+                    "retrieval_trace": {
+                        "scope_refuse": scope_refuse_gate,
+                        "intent_refuse": intent_refuse_gate,
+                        "retrieval_scope": scope.as_dict(),
+                    },
+                    "rerank_trace": {},
+                }
+                if refuse_gate
+                else state.get("retrieval_result"),
                 "observations": observations,
             }
         )
@@ -2101,6 +2154,7 @@ class TrustedQAWorkflow:
             slots,
             selected_skill,
             planner_result=planner_result,
+            intent_trace=intent_trace,
         )
         clarify = self._apply_scope_clarify(clarify, retrieval_scope, slots)
         clarify_duration_ms = _duration_ms(clarify_started_at)
@@ -2169,8 +2223,16 @@ class TrustedQAWorkflow:
             await _emit_response_finalize_stage(progress_callback, response)
             return response
 
-        if retrieval_scope.should_refuse:
-            gate = self._scope_refuse_gate(retrieval_scope)
+        if clarify.get("decision") == "refuse" or retrieval_scope.should_refuse:
+            gate = (
+                {
+                    "decision": "refuse",
+                    "reason": "out_of_scope_intent",
+                    "message": "The request is outside the supported financial-report QA scope.",
+                }
+                if clarify.get("decision") == "refuse"
+                else self._scope_refuse_gate(retrieval_scope)
+            )
             answer_started_at = time.perf_counter()
             await _emit_progress_marker(progress_callback, "answer_generation")
             answer_payload = self.answer_generator.generate(

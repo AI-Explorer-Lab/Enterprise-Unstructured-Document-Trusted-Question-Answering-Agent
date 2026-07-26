@@ -5,7 +5,7 @@ app:
 environment:
   name: dev
 database:
-  bootstrap_on_startup: false
+  bootstrap_on_startup: true
 db:
   backend: pgvector
   async_session: true
@@ -96,14 +96,13 @@ storage:
     database_url: postgresql+asyncpg://postgres:1234@127.0.0.1:5432/trusted_qa
     embedding_dim: 1024
   local_dev:
-    enabled: false
+    enabled: true
     database_url: sqlite:///database/local_dev.db
 agent:
   orchestration: trusted_qa_workflow
   max_iterations: 6
   skill_trace_enabled: true
   default_skill: information_extraction
-  use_llm_intent_slot: false
 planner:
   enabled: true
   max_tasks: 8
@@ -156,8 +155,8 @@ reranker:
   cross_encoder_batch_size: 8
   cross_encoder_max_length: 512
   cross_encoder_local_files_only: false
-  cross_encoder_device: cuda
-  cross_encoder_preload_on_startup: true
+  cross_encoder_device: auto
+  cross_encoder_preload_on_startup: false
   cross_encoder_load_on_request: true
 cache:
   enabled: true

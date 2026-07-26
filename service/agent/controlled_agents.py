@@ -1,12 +1,12 @@
 ﻿from __future__ import annotations
 
 import json
-import os
 import re
 from typing import Any, Dict, List, Mapping, Sequence, Type
 
 from service.agent.clarify_gate import extract_slots
 from service.agent.evidence_context import build_audit_evidence_brief
+from service.agent.intent_gate import LLMIntentGate
 from service.agent.query_classifier import (
     _ANALYSIS_KEYWORDS,
     _CALCULATION_KEYWORDS,
@@ -24,7 +24,6 @@ from service.agent.structured_understanding import (
     merge_structured_frame,
     query_type_from_frame,
 )
-from utils.config_loader import get_app_config
 from utils.content_normalizer import normalize_whitespace
 
 try:
@@ -87,11 +86,6 @@ class IntentClassificationSchema(BaseModel):
     query_type: str
     matched_keyword_group: str = ""
     intent: str = ""
-    reason: str = ""
-
-
-class IntentCandidateResolutionSchema(BaseModel):
-    intent_id: str
     reason: str = ""
 
 
@@ -338,41 +332,19 @@ def _config_bool(value: Any, default: bool = False) -> bool:
     return text in {"1", "true", "yes", "y", "on"}
 
 
-def _resolve_llm_intent_slot_enabled(explicit: bool | None = None) -> bool:
-    if explicit is not None:
-        return bool(explicit)
-
-    env_value = os.getenv("TRUSTED_QA_USE_LLM_INTENT_SLOT")
-    if env_value is not None and env_value.strip():
-        return _config_bool(env_value)
-
-    try:
-        config = get_app_config()
-    except Exception:
-        config = {}
-    agent_cfg = config.get("agent", {}) if isinstance(config.get("agent"), dict) else {}
-    return _config_bool(
-        agent_cfg.get(
-            "use_llm_intent_slot",
-            agent_cfg.get("llm_intent_slot_enabled", agent_cfg.get("use_llm_understanding")),
-        ),
-        default=False,
-    )
-
-
 class QuestionUnderstandingAgent:
     def __init__(
         self,
         llm_service: Any | None = None,
         use_llm_intent_slot: bool | None = None,
-        semantic_router: Any | None = None,
+        intent_gate: Any | None = None,
         company_registry: Any | None = None,
     ) -> None:
         self.llm_service = llm_service
-        self.use_llm_intent_slot = _resolve_llm_intent_slot_enabled(use_llm_intent_slot)
+        del use_llm_intent_slot
         self.intent_agent = IntentUnderstandingAgent(llm_service)
         self.slot_agent = SlotFillingAgent(llm_service)
-        self.semantic_router = semantic_router
+        self.intent_gate = intent_gate or LLMIntentGate(llm_service)
         self.hard_signal_extractor = HardSignalExtractor(company_registry) if company_registry is not None else None
 
     async def understand(
@@ -400,160 +372,110 @@ class QuestionUnderstandingAgent:
                 "field_evidence": [],
             }
         )
-        semantic_route: Dict[str, Any] = {
-            "candidates": [],
-            "route_status": "disabled",
-            "top_intent": "",
-            "top1_score": 0.0,
-            "score_margin": 0.0,
-            "provider": "disabled",
-        }
-        if self.semantic_router is not None:
-            try:
-                semantic_route = self.semantic_router.route(question)
-                if hasattr(semantic_route, "__await__"):
-                    semantic_route = await semantic_route
-                if hasattr(semantic_route, "as_dict"):
-                    semantic_route = semantic_route.as_dict()
-                if not isinstance(semantic_route, Mapping):
-                    semantic_route = {}
-                semantic_route = dict(semantic_route)
-            except Exception as exc:
-                semantic_route = {
-                    "candidates": [],
-                    "route_status": "error",
-                    "top_intent": "",
-                    "top1_score": 0.0,
-                    "score_margin": 0.0,
-                    "provider": "error",
-                    "error_type": type(exc).__name__,
-                }
+        try:
+            intent_route = await self.intent_gate.decide(question)
+        except Exception as exc:
+            intent_route = {
+                "valid": False,
+                "decision": "error",
+                "route_status": "error",
+                "intent_id": "",
+                "sub_intents": [],
+                "execution_intent": "",
+                "top_intent": "",
+                "provider": "llm",
+                "strategy": "llm_zero_shot",
+                "few_shot": False,
+                "validation_error": type(exc).__name__,
+            }
+        if not isinstance(intent_route, Mapping):
+            intent_route = {}
+        intent_route = dict(intent_route)
+        decision = _clean_str(intent_route.get("decision")).lower()
+        execution_intent = _clean_str(
+            intent_route.get("execution_intent") or intent_route.get("intent_id")
+        )
 
-        query_type = query_type_from_frame(frame, semantic_route)
-        if query_type != "ambiguous_query":
-            route_status = _clean_str(
-                semantic_route.get("route_status") or semantic_route.get("decision")
-            )
-            source = "embedding" if route_status in {"accepted", "accept"} else "deterministic_fallback"
+        if bool(intent_route.get("valid")) and decision in {"select", "planner"}:
+            query_type = normalize_query_type(execution_intent)
+            resolved_frame = dict(frame)
+            resolved_frame["primary_action"] = QUERY_TYPE_TO_ACTION.get(query_type, "")
+            resolved_frame["routing_state"] = "planner" if decision == "planner" else "ready"
             return self._build_structured_result(
                 question=question,
                 query_type=query_type,
-                frame=frame,
-                semantic_route=semantic_route,
+                frame=resolved_frame,
+                intent_route=intent_route,
                 skill_registry=skill_registry,
-                source=source,
-                reason="Built a multi-dimensional query frame, then selected the execution skill.",
-            )
-
-        route_status = _clean_str(
-            semantic_route.get("route_status") or semantic_route.get("decision")
-        )
-        llm_fallback_enabled = bool(getattr(self.semantic_router, "llm_fallback_enabled", True))
-        if route_status == "ambiguous" and llm_fallback_enabled:
-            resolved_intent = await self._resolve_candidate_intent(
-                question,
-                semantic_route.get("candidates") or [],
-                conversation_context=conversation_context,
-                candidate_limit=int(
-                    getattr(self.semantic_router, "ambiguous_candidate_limit", 3)
+                source="llm_intent_gate",
+                reason=(
+                    "Zero-shot LLM routed the compound request to the planner."
+                    if decision == "planner"
+                    else "Zero-shot LLM selected one supported primary intent."
                 ),
             )
-            if resolved_intent:
-                resolved_frame = merge_structured_frame(
-                    frame,
-                    {
-                        "primary_action": QUERY_TYPE_TO_ACTION.get(resolved_intent, ""),
-                        "routing_state": "ready",
-                    },
-                )
-                resolved_frame["routing_state"] = "ready"
-                return self._build_structured_result(
-                    question=question,
-                    query_type=resolved_intent,
-                    frame=resolved_frame,
-                    semantic_route=semantic_route,
-                    skill_registry=skill_registry,
-                    source="llm_candidate_disambiguation",
-                    reason="Embedding candidates were close; LLM selected only from the bounded candidate list.",
-                )
 
-        if route_status == "unknown":
-            unknown_frame = merge_structured_frame(
-                frame,
-                {"routing_state": "unknown_intent"},
+        if bool(intent_route.get("valid")) and decision in {"clarify", "reject"}:
+            guarded_frame = dict(frame)
+            guarded_frame["routing_state"] = (
+                "out_of_scope" if decision == "reject" else "needs_clarification"
             )
-            unknown_frame["routing_state"] = "unknown_intent"
             return self._build_structured_result(
                 question=question,
                 query_type="ambiguous_query",
-                frame=unknown_frame,
-                semantic_route=semantic_route,
+                frame=guarded_frame,
+                intent_route=intent_route,
                 skill_registry=skill_registry,
-                source="embedding_unknown",
-                reason="All embedding candidates were below the configured minimum intent score.",
+                source="llm_intent_gate",
+                reason=(
+                    "Zero-shot LLM rejected an out-of-scope request."
+                    if decision == "reject"
+                    else "Zero-shot LLM requested clarification before routing."
+                ),
             )
 
-        ambiguous_frame = merge_structured_frame(
-            frame,
-            {
-                "routing_state": (
-                    "ambiguous_intent"
-                    if route_status == "ambiguous"
-                    else frame.get("routing_state") or "needs_clarification"
-                ),
-            },
-        )
-        ambiguous_frame["routing_state"] = (
-            "ambiguous_intent"
-            if route_status == "ambiguous"
-            else _clean_str(frame.get("routing_state")) or "needs_clarification"
-        )
+        # Availability fallback: use auditable hard action signals only. This
+        # never calls an embedding model or silently accepts an unknown intent.
+        fallback_query_type = query_type_from_frame(frame)
+        if fallback_query_type != "ambiguous_query":
+            fallback_route = {
+                **intent_route,
+                "decision": "select",
+                "route_status": "accepted",
+                "execution_intent": fallback_query_type,
+                "top_intent": fallback_query_type,
+                "fallback": "deterministic_hard_signal",
+            }
+            fallback_frame = dict(frame)
+            fallback_frame["primary_action"] = QUERY_TYPE_TO_ACTION.get(fallback_query_type, "")
+            fallback_frame["routing_state"] = "ready"
+            return self._build_structured_result(
+                question=question,
+                query_type=fallback_query_type,
+                frame=fallback_frame,
+                intent_route=fallback_route,
+                skill_registry=skill_registry,
+                source="deterministic_fallback",
+                reason="LLM intent gate failed; used one explicit hard action signal.",
+            )
+
+        fallback_route = {
+            **intent_route,
+            "decision": "clarify",
+            "route_status": "unknown",
+            "fallback": "clarify",
+        }
+        fallback_frame = dict(frame)
+        fallback_frame["routing_state"] = "needs_clarification"
         return self._build_structured_result(
             question=question,
             query_type="ambiguous_query",
-            frame=ambiguous_frame,
-            semantic_route=semantic_route,
+            frame=fallback_frame,
+            intent_route=fallback_route,
             skill_registry=skill_registry,
-            source="embedding_ambiguous",
-            reason="Embedding candidates remained ambiguous after bounded disambiguation.",
+            source="deterministic_fallback",
+            reason="LLM intent gate failed and no single hard action could be established.",
         )
-
-    async def _resolve_candidate_intent(
-        self,
-        question: str,
-        candidates: Sequence[Mapping[str, Any]],
-        conversation_context: Mapping[str, Any] | None = None,
-        candidate_limit: int = 3,
-    ) -> str:
-        limit = max(2, min(int(candidate_limit), 3))
-        allowed = [
-            _clean_str(item.get("query_type") or item.get("intent_id"))
-            for item in candidates[:limit]
-            if isinstance(item, Mapping)
-        ]
-        allowed = [item for item in allowed if item in QUERY_TYPE_SET and item != "ambiguous_query"]
-        if len(allowed) < 2:
-            return ""
-        parsed = await _safe_structured_json(
-            self.llm_service,
-            "Choose the best intent only from the supplied embedding candidates. "
-            "Do not invent another intent and do not extract slots.",
-            {
-                "question": question,
-                "candidate_intents": [
-                    dict(item)
-                    for item in candidates[:limit]
-                    if isinstance(item, Mapping)
-                    and _clean_str(item.get("query_type") or item.get("intent_id")) in allowed
-                ],
-                "conversation_context": dict(conversation_context or {}),
-                "allowed_intent_ids": allowed,
-            },
-            schema=IntentCandidateResolutionSchema,
-            max_tokens=240,
-        )
-        resolved = _clean_str((parsed or {}).get("intent_id"))
-        return resolved if resolved in allowed else ""
 
     def _build_structured_result(
         self,
@@ -561,7 +483,7 @@ class QuestionUnderstandingAgent:
         question: str,
         query_type: str,
         frame: Mapping[str, Any],
-        semantic_route: Mapping[str, Any],
+        intent_route: Mapping[str, Any],
         skill_registry: Any,
         source: str,
         reason: str,
@@ -610,7 +532,9 @@ class QuestionUnderstandingAgent:
         slots["requirements"] = dict(frame.get("requirements") or {})
         slots["structured_frame"] = dict(frame)
         slots["routing_state"] = _clean_str(frame.get("routing_state")) or "ready"
-        slots["router_candidates"] = list(semantic_route.get("candidates") or [])
+        slots["intent_decision"] = _clean_str(intent_route.get("decision"))
+        slots["intent_sub_intents"] = _clean_list(intent_route.get("sub_intents"))
+        slots["intent_execution_intent"] = _clean_str(intent_route.get("execution_intent"))
         slots["__slot_fill_source__"] = source
         slots["__skill_name__"] = selected_skill.skill_name
         slots["__missing_required__"] = selected_skill.get_missing_slots(slots)
@@ -637,7 +561,9 @@ class QuestionUnderstandingAgent:
                 "requirements": dict(requirements),
                 "routing_state": frame.get("routing_state") or "ready",
                 "field_evidence": list(frame.get("field_evidence") or []),
-                "semantic_router": dict(semantic_route),
+                "intent_decision": _clean_str(intent_route.get("decision")),
+                "sub_intents": _clean_list(intent_route.get("sub_intents")),
+                "intent_router": dict(intent_route),
                 "need_citation": need_citation,
                 "citation_mode": citation_mode,
                 "answer_should_include": answer_should_include,

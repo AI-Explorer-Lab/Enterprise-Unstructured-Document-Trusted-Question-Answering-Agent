@@ -7,13 +7,12 @@ import pytest
 
 from service.agent.company_registry import CompanyRegistry
 from service.agent.controlled_agents import QuestionUnderstandingAgent
+from service.agent.intent_gate import LLMIntentGate, load_intent_gate_config
 from service.agent.query_classifier import classify_query_type
 from service.agent.schemas import PRIMARY_INTENT_TYPES, normalize_query_type
 from service.agent.skill_registry import DEFAULT_SKILL_REGISTRY
 from service.agent.structured_understanding import (
     HardSignalExtractor,
-    SemanticSkillRouter,
-    load_intent_router_config,
     query_type_from_frame,
 )
 from service.llm.llm_client import _grounded_answer_scope_contract
@@ -31,108 +30,55 @@ def _registry() -> CompanyRegistry:
     )
 
 
-class _FixedRoute:
-    def as_dict(self):
-        return {
-            "candidates": [
-                {"query_type": "comparison", "score": 0.88},
-                {"query_type": "information_extraction", "score": 0.75},
-            ],
-            "route_status": "accepted",
-            "top_intent": "comparison",
-            "top1_score": 0.88,
-            "score_margin": 0.13,
-            "provider": "test",
-        }
-
-
-class _FixedSemanticRouter:
-    llm_fallback_enabled = False
-
-    async def route(self, question: str):
-        del question
-        return _FixedRoute()
-
-
-class _AmbiguousRoute:
-    def as_dict(self):
-        return {
-            "candidates": [
-                {"query_type": "comparison", "score": 0.76},
-                {"query_type": "analysis", "score": 0.74},
-            ],
-            "route_status": "ambiguous",
-            "top_intent": "comparison",
-            "top1_score": 0.76,
-            "score_margin": 0.02,
-            "provider": "test",
-        }
-
-
-class _AmbiguousSemanticRouter:
-    llm_fallback_enabled = True
-
-    async def route(self, question: str):
-        del question
-        return _AmbiguousRoute()
-
-
-class _UnknownRoute:
-    def as_dict(self):
-        return {
-            "candidates": [
-                {"query_type": "analysis", "score": 0.51},
-                {"query_type": "summarization", "score": 0.48},
-            ],
-            "route_status": "unknown",
-            "top_intent": None,
-            "top1_score": 0.51,
-            "score_margin": 0.03,
-            "provider": "test",
-        }
-
-
-class _UnknownSemanticRouter:
-    llm_fallback_enabled = True
-
-    async def route(self, question: str):
-        del question
-        return _UnknownRoute()
-
-
-class _CandidateResolverLLM:
-    def __init__(self, intent_id: str) -> None:
+class _FixedIntentGate:
+    def __init__(
+        self,
+        decision: str,
+        intent_id: str = "",
+        sub_intents: list[str] | None = None,
+    ) -> None:
+        self.decision = decision
         self.intent_id = intent_id
-        self.payloads = []
+        self.sub_intents = list(sub_intents or [])
+        self.questions: list[str] = []
+
+    async def decide(self, question: str):
+        self.questions.append(question)
+        execution_intent = (
+            self.intent_id
+            if self.decision == "select"
+            else (self.sub_intents[-1] if self.decision == "planner" else "")
+        )
+        return {
+            "valid": True,
+            "decision": self.decision,
+            "route_status": "accepted" if execution_intent else "unknown",
+            "intent_id": self.intent_id if self.decision == "select" else "",
+            "sub_intents": self.sub_intents if self.decision == "planner" else [],
+            "execution_intent": execution_intent,
+            "top_intent": execution_intent,
+            "provider": "llm",
+            "strategy": "llm_zero_shot",
+            "few_shot": False,
+            "validation_error": "",
+        }
+
+
+class _StructuredIntentLLM:
+    def __init__(self, payload):
+        self.payload = payload
+        self.calls = []
 
     async def structured_json(self, system_prompt, user_payload, schema, max_tokens):
-        del system_prompt, schema, max_tokens
-        self.payloads.append(user_payload)
-        return {"intent_id": self.intent_id, "reason": "bounded candidate choice"}
-
-
-class _FakeEmbeddingService:
-    provider_name = "test_embedding"
-
-    @staticmethod
-    def _vector(text: str):
-        if "对比两个公司" in text or "谁的收入规模更大" in text:
-            return [1.0, 0.0, 0.0, 0.0, 0.0]
-        if "计算增长率" in text:
-            return [0.0, 1.0, 0.0, 0.0, 0.0]
-        if "分析原因" in text:
-            return [0.0, 0.0, 1.0, 0.0, 0.0]
-        if "总结" in text:
-            return [0.0, 0.0, 0.0, 1.0, 0.0]
-        return [0.0, 0.0, 0.0, 0.0, 1.0]
-
-    async def embed_text(self, text: str, **kwargs):
-        del kwargs
-        return self._vector(text)
-
-    async def embed_texts(self, texts, **kwargs):
-        del kwargs
-        return [self._vector(text) for text in texts]
+        self.calls.append(
+            {
+                "system_prompt": system_prompt,
+                "user_payload": user_payload,
+                "schema": schema,
+                "max_tokens": max_tokens,
+            }
+        )
+        return dict(self.payload)
 
 
 @pytest.mark.parametrize(
@@ -270,116 +216,76 @@ def test_deterministic_layer_normalizes_amount_and_percentage_conditions() -> No
     ]
 
 
-def test_embedding_router_returns_top_n_and_margin_for_five_intents() -> None:
-    router = SemanticSkillRouter(
-        _FakeEmbeddingService(),
+def test_production_intent_router_is_zero_shot_llm_without_prototypes() -> None:
+    config = load_intent_gate_config()
+
+    assert config["strategy"] == "llm_zero_shot"
+    assert config["few_shot_enabled"] is False
+    assert "prototypes" not in config
+    assert "min_intent_score" not in config
+    assert "min_score_margin" not in config
+
+
+def test_llm_intent_gate_selects_one_primary_intent_without_few_shot() -> None:
+    llm = _StructuredIntentLLM(
         {
-            "top_k": 3,
-            "min_intent_score": 0.5,
-            "min_score_margin": 0.1,
-            "prototypes": {
-                "comparison": ["对比两个公司"],
-                "metric_calculation": ["计算增长率"],
-                "analysis": ["分析原因"],
-                "summarization": ["总结文档"],
-                "information_extraction": ["查询事实"],
-            },
-        },
+            "decision": "select",
+            "intent_id": "comparison",
+            "sub_intents": [],
+        }
     )
+    gate = LLMIntentGate(llm, {"enabled": True, "max_tokens": 320})
 
-    route = asyncio.run(router.route("谁的收入规模更大"))
+    route = asyncio.run(gate.decide("比较两家公司2025年的营业收入"))
 
-    assert route.route_status == "accepted"
-    assert route.top_intent == "comparison"
-    assert route.candidates[0]["query_type"] == "comparison"
-    assert len(route.candidates) == 3
-    assert route.candidates[0]["matched_prototype_count"] == 1
+    assert route["valid"] is True
+    assert route["decision"] == "select"
+    assert route["execution_intent"] == "comparison"
+    assert route["few_shot"] is False
+    assert llm.calls[0]["user_payload"] == {
+        "question": "比较两家公司2025年的营业收入"
+    }
 
 
-def test_embedding_confidence_guard_marks_close_candidates_ambiguous() -> None:
-    router = SemanticSkillRouter(
-        _FakeEmbeddingService(),
+def test_llm_intent_gate_planner_keeps_order_and_uses_terminal_intent() -> None:
+    llm = _StructuredIntentLLM(
         {
-            "min_intent_score": 0.5,
-            "min_score_margin": 1.1,
-            "prototypes": {
-                "comparison": ["对比两个公司"],
-                "information_extraction": ["查询事实"],
-            },
-        },
+            "decision": "planner",
+            "intent_id": "",
+            "sub_intents": ["comparison", "analysis"],
+        }
     )
+    gate = LLMIntentGate(llm, {"enabled": True})
 
-    route = asyncio.run(router.route("谁的收入规模更大"))
+    route = asyncio.run(gate.decide("比较两家公司营收并分析差异原因"))
 
-    assert route.route_status == "ambiguous"
-    assert route.top_intent == "comparison"
-    assert route.as_dict()["score_margin"] < 1.1
+    assert route["valid"] is True
+    assert route["sub_intents"] == ["comparison", "analysis"]
+    assert route["execution_intent"] == "analysis"
+    assert route["route_status"] == "accepted"
 
 
-def test_embedding_confidence_guard_marks_low_score_unknown() -> None:
-    router = SemanticSkillRouter(
-        _FakeEmbeddingService(),
+def test_llm_intent_gate_rejects_invalid_planner_payload() -> None:
+    llm = _StructuredIntentLLM(
         {
-            "min_intent_score": 1.1,
-            "min_score_margin": 0.01,
-            "prototypes": {
-                "comparison": ["对比两个公司"],
-                "information_extraction": ["查询事实"],
-            },
-        },
+            "decision": "planner",
+            "intent_id": "",
+            "sub_intents": ["analysis"],
+        }
     )
+    gate = LLMIntentGate(llm, {"enabled": True})
 
-    route = asyncio.run(router.route("谁的收入规模更大"))
-    payload = route.as_dict()
+    route = asyncio.run(gate.decide("分析一下"))
 
-    assert route.route_status == "unknown"
-    assert payload["top_intent"] is None
-    assert payload["top1_score"] == 1.0
-
-
-def test_each_intent_has_at_least_twenty_independent_prototypes() -> None:
-    config = load_intent_router_config()
-    prototypes = config["prototypes"]
-
-    assert set(prototypes) == set(PRIMARY_INTENT_TYPES)
-    assert all(len(examples) >= 20 for examples in prototypes.values())
-    assert all(len(examples) == len(set(examples)) for examples in prototypes.values())
-
-
-def test_semantic_router_embeds_each_prototype_independently() -> None:
-    class _RecordingEmbeddingService(_FakeEmbeddingService):
-        def __init__(self) -> None:
-            self.embedded_batches = []
-
-        async def embed_texts(self, texts, **kwargs):
-            self.embedded_batches.append(list(texts))
-            return await super().embed_texts(texts, **kwargs)
-
-    embedding_service = _RecordingEmbeddingService()
-    router = SemanticSkillRouter(
-        embedding_service,
-        {
-            "prototype_score_top_n": 2,
-            "prototypes": {
-                "comparison": ["对比两个公司", "谁的收入规模更大"],
-                "information_extraction": ["查询事实", "提取披露数值"],
-            },
-        },
-    )
-
-    asyncio.run(router.route("谁的收入规模更大"))
-
-    assert embedding_service.embedded_batches == [
-        ["对比两个公司", "谁的收入规模更大", "查询事实", "提取披露数值"]
-    ]
-    assert router._prototype_vectors is not None
-    assert len(router._prototype_vectors["comparison"]) == 2
+    assert route["valid"] is False
+    assert route["decision"] == "error"
+    assert route["validation_error"] == "planner_requires_two_sub_intents"
 
 
 def test_question_understanding_returns_one_intent_and_one_skill() -> None:
     agent = QuestionUnderstandingAgent(
         llm_service=None,
-        semantic_router=_FixedSemanticRouter(),
+        intent_gate=_FixedIntentGate("select", "comparison"),
         company_registry=_registry(),
     )
 
@@ -417,7 +323,7 @@ def test_question_understanding_routes_each_single_intent(
 ) -> None:
     agent = QuestionUnderstandingAgent(
         llm_service=None,
-        semantic_router=None,
+        intent_gate=_FixedIntentGate("select", query_type),
         company_registry=_registry(),
     )
 
@@ -428,10 +334,13 @@ def test_question_understanding_routes_each_single_intent(
     assert result["slots"]["__missing_required__"] == []
 
 
-def test_embedding_intent_keeps_same_domain_compound_actions_for_planner() -> None:
+def test_llm_planner_decision_preserves_all_sub_intents_and_terminal_skill() -> None:
     agent = QuestionUnderstandingAgent(
         llm_service=None,
-        semantic_router=_FixedSemanticRouter(),
+        intent_gate=_FixedIntentGate(
+            "planner",
+            sub_intents=["comparison", "analysis"],
+        ),
         company_registry=_registry(),
     )
 
@@ -442,47 +351,69 @@ def test_embedding_intent_keeps_same_domain_compound_actions_for_planner() -> No
         )
     )
 
-    assert result["query_type"] == "comparison"
-    assert result["intent_trace"]["routing_state"] == "ambiguous_action"
-
-
-def test_ambiguous_route_uses_only_bounded_candidates_for_llm_resolution() -> None:
-    llm = _CandidateResolverLLM("analysis")
-    agent = QuestionUnderstandingAgent(
-        llm_service=llm,
-        semantic_router=_AmbiguousSemanticRouter(),
-        company_registry=_registry(),
-    )
-
-    result = asyncio.run(
-        agent.understand(
-            "比较营收变化并解释背后的原因。",
-            DEFAULT_SKILL_REGISTRY,
-        )
-    )
-
     assert result["query_type"] == "analysis"
-    assert result["intent_trace"]["understanding_source"] == "llm_candidate_disambiguation"
-    assert llm.payloads[0]["allowed_intent_ids"] == ["comparison", "analysis"]
+    assert result["intent_trace"]["routing_state"] == "planner"
+    assert result["intent_trace"]["intent_decision"] == "planner"
+    assert result["intent_trace"]["sub_intents"] == ["comparison", "analysis"]
+    assert result["slots"]["intent_sub_intents"] == ["comparison", "analysis"]
 
 
-def test_unknown_route_never_forces_hard_rule_top_intent() -> None:
+def test_llm_clarify_decision_does_not_force_a_rule_intent() -> None:
     agent = QuestionUnderstandingAgent(
-        llm_service=_CandidateResolverLLM("analysis"),
-        semantic_router=_UnknownSemanticRouter(),
+        llm_service=None,
+        intent_gate=_FixedIntentGate("clarify"),
         company_registry=_registry(),
     )
 
     result = asyncio.run(
         agent.understand(
-            "分析芯导科技的经营情况。",
+            "给我弄一下财务数据。",
             DEFAULT_SKILL_REGISTRY,
         )
     )
 
     assert result["query_type"] == "ambiguous_query"
-    assert result["intent_trace"]["understanding_source"] == "embedding_unknown"
-    assert result["intent_trace"]["routing_state"] == "unknown_intent"
+    assert result["intent_trace"]["understanding_source"] == "llm_intent_gate"
+    assert result["intent_trace"]["routing_state"] == "needs_clarification"
+    assert result["slots"]["intent_decision"] == "clarify"
+
+
+def test_llm_reject_decision_marks_request_out_of_scope() -> None:
+    agent = QuestionUnderstandingAgent(
+        llm_service=None,
+        intent_gate=_FixedIntentGate("reject"),
+        company_registry=_registry(),
+    )
+
+    result = asyncio.run(
+        agent.understand(
+            "帮我订一张明天去北京的机票。",
+            DEFAULT_SKILL_REGISTRY,
+        )
+    )
+
+    assert result["query_type"] == "ambiguous_query"
+    assert result["intent_trace"]["understanding_source"] == "llm_intent_gate"
+    assert result["intent_trace"]["routing_state"] == "out_of_scope"
+    assert result["slots"]["intent_decision"] == "reject"
+
+
+def test_llm_failure_uses_auditable_hard_action_without_embedding() -> None:
+    agent = QuestionUnderstandingAgent(
+        llm_service=None,
+        company_registry=_registry(),
+    )
+
+    result = asyncio.run(
+        agent.understand(
+            "分析芯导科技经营现金流下降的原因。",
+            DEFAULT_SKILL_REGISTRY,
+        )
+    )
+
+    assert result["query_type"] == "analysis"
+    assert result["intent_trace"]["understanding_source"] == "deterministic_fallback"
+    assert result["intent_trace"]["intent_router"]["fallback"] == "deterministic_hard_signal"
 
 
 def test_legacy_query_types_normalize_to_new_model() -> None:

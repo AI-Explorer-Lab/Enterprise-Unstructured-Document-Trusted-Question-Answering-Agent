@@ -484,6 +484,7 @@ class DocumentIndexingService:
                 )
             runtime_repository = get_runtime_repository()
             effective_backend = str(getattr(runtime_repository, "backend", "unknown") or "unknown")
+            persistent_database_write = effective_backend == "pgvector"
 
             database_timer = start_operation_step(
                 "index.database",
@@ -524,7 +525,7 @@ class DocumentIndexingService:
                 database_timer,
                 indexed_chunks=indexed_count,
                 session_collection_chunks=session_result.get("chunk_count"),
-                persistent_database_write=True,
+                persistent_database_write=persistent_database_write,
             )
             _notify_progress(
                 progress_callback,
@@ -533,7 +534,7 @@ class DocumentIndexingService:
                 collection_name=collection,
                 indexed_chunks=indexed_count,
                 session_collection_chunks=session_result.get("chunk_count"),
-                persistent_database_write=True,
+                persistent_database_write=persistent_database_write,
             )
 
             result = {
@@ -549,8 +550,8 @@ class DocumentIndexingService:
                 "storage": {
                     "configured_backend": self.configured_storage_backend,
                     "effective_vector_backend": effective_backend,
-                    "target": "pgvector",
-                    "persistent_database_write": True,
+                    "target": effective_backend,
+                    "persistent_database_write": persistent_database_write,
                     "session_collection_chunks": session_result.get("chunk_count"),
                 },
             }
@@ -571,7 +572,6 @@ _DEFAULT_INDEXING_SERVICE = DocumentIndexingService()
 
 def get_document_indexing_service() -> DocumentIndexingService:
     return _DEFAULT_INDEXING_SERVICE
-
 
 
 

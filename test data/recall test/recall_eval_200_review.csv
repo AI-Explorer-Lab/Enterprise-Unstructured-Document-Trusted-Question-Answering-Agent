@@ -1,0 +1,201 @@
+﻿query_id,question,report_year,scenario,difficulty,expected_answer,source_path,page_number,heading_path,anchor_text,annotation_status
+RET-001,芯导科技的公司中文全称是什么？,2024,basic_fact,simple,上海芯导电子科技股份有限公司,docs/test_docs/上海芯导电子科技股份有限公司2024年年度报告.pdf,7,第二节 公司简介和主要财务指标,公司的中文名称,source_located_single_pass
+RET-002,芯导科技的中文简称是什么？,2024,basic_fact,simple,芯导科技,docs/test_docs/上海芯导电子科技股份有限公司2024年年度报告.pdf,7,第二节 公司简介和主要财务指标,公司的中文简称,source_located_single_pass
+RET-003,芯导科技的英文全称是什么？,2024,basic_fact,simple,"Shanghai Prisemi Electronics Co.,Ltd.",docs/test_docs/上海芯导电子科技股份有限公司2024年年度报告.pdf,7,第二节 公司简介和主要财务指标,公司的外文名称,source_located_single_pass
+RET-004,芯导科技的英文简称是什么？,2024,basic_fact,simple,Prisemi,docs/test_docs/上海芯导电子科技股份有限公司2024年年度报告.pdf,7,第二节 公司简介和主要财务指标,公司的外文名称缩写,source_located_single_pass
+RET-005,芯导科技2024年年报披露的法定代表人是谁？,2024,basic_fact,simple,欧新华,docs/test_docs/上海芯导电子科技股份有限公司2024年年度报告.pdf,7,第二节 公司简介和主要财务指标,公司的法定代表人,source_located_single_pass
+RET-006,芯导科技的注册地址在哪里？,2024,basic_fact,simple,中国（上海）自由贸易试验区祖冲之路2277弄7号,docs/test_docs/上海芯导电子科技股份有限公司2024年年度报告.pdf,7,第二节 公司简介和主要财务指标,公司注册地址,source_located_single_pass
+RET-007,芯导科技办公地址对应的两个邮政编码是什么？,2024,basic_fact,simple,201210；201203,docs/test_docs/上海芯导电子科技股份有限公司2024年年度报告.pdf,7,第二节 公司简介和主要财务指标,公司办公地址的邮政编码,source_located_single_pass
+RET-008,芯导科技的公司网址是什么？,2024,basic_fact,simple,http://www.prisemi.com,docs/test_docs/上海芯导电子科技股份有限公司2024年年度报告.pdf,7,第二节 公司简介和主要财务指标,公司网址,source_located_single_pass
+RET-009,芯导科技的投资者联系邮箱是什么？,2024,basic_fact,simple,investor@prisemi.com,docs/test_docs/上海芯导电子科技股份有限公司2024年年度报告.pdf,7,第二节 公司简介和主要财务指标,电子信箱,source_located_single_pass
+RET-010,芯导科技2024年年报中的董事会秘书是谁？,2024,basic_fact,simple,兰芳云,docs/test_docs/上海芯导电子科技股份有限公司2024年年度报告.pdf,7,第二节 公司简介和主要财务指标,董事会秘书,source_located_single_pass
+RET-011,芯导科技2024年年报中的证券事务代表是谁？,2024,basic_fact,simple,闵雨琦,docs/test_docs/上海芯导电子科技股份有限公司2024年年度报告.pdf,7,第二节 公司简介和主要财务指标,证券事务代表,source_located_single_pass
+RET-012,芯导科技董事会秘书的联系电话是什么？,2024,basic_fact,simple,021-60753051,docs/test_docs/上海芯导电子科技股份有限公司2024年年度报告.pdf,7,第二节 公司简介和主要财务指标,电话,source_located_single_pass
+RET-013,芯导科技2024年计入当期损益的政府补助是多少元？,2024,non_recurring_metric,simple,"3,770,259.62元",docs/test_docs/上海芯导电子科技股份有限公司2024年年度报告.pdf,10,第二节 公司简介和主要财务指标 > 非经常性损益项目和金额,计入当期损益的政府补助,source_located_single_pass
+RET-014,芯导科技2024年委托他人投资或管理资产取得的损益是多少元？,2024,non_recurring_metric,simple,"54,641,015.45元",docs/test_docs/上海芯导电子科技股份有限公司2024年年度报告.pdf,10,第二节 公司简介和主要财务指标 > 非经常性损益项目和金额,委托他人投资或管理资产的损益,source_located_single_pass
+RET-015,芯导科技2024年采用什么经营模式进行产品研发和销售？,2024,business_model,simple,Fabless经营模式,docs/test_docs/上海芯导电子科技股份有限公司2024年年度报告.pdf,18,第三节 管理层讨论与分析 > 主要经营模式,一直采用 Fabless 的经营模式,source_located_single_pass
+RET-016,芯导科技2024年主要采用什么销售模式？,2024,business_model,simple,经销为主，直销为辅,docs/test_docs/上海芯导电子科技股份有限公司2024年年度报告.pdf,18,第三节 管理层讨论与分析 > 主要经营模式,销售模式,source_located_single_pass
+RET-017,芯导科技股票在哪个交易所及板块上市？,2024,basic_fact,simple,上海证券交易所科创板,docs/test_docs/上海芯导电子科技股份有限公司2024年年度报告.pdf,7,第二节 公司简介和主要财务指标,股票上市交易所及板块,source_located_single_pass
+RET-018,芯导科技的股票代码是多少？,2024,basic_fact,simple,688230,docs/test_docs/上海芯导电子科技股份有限公司2024年年度报告.pdf,7,第二节 公司简介和主要财务指标,股票代码,source_located_single_pass
+RET-019,芯导科技2024年聘请的境内会计师事务所是哪家？,2024,basic_fact,simple,天职国际会计师事务所（特殊普通合伙）,docs/test_docs/上海芯导电子科技股份有限公司2024年年度报告.pdf,7,第二节 公司简介和主要财务指标,天职国际会计师事务所,source_located_single_pass
+RET-020,芯导科技2024年持续督导的保荐机构是哪家？,2024,basic_fact,simple,国元证券股份有限公司,docs/test_docs/上海芯导电子科技股份有限公司2024年年度报告.pdf,8,第二节 公司简介和主要财务指标,报告期内履行持续督导职责的保荐机构,source_located_single_pass
+RET-021,芯导科技2024年的营业收入是多少元？,2024,financial_metric,simple,"352,941,674.80",docs/test_docs/上海芯导电子科技股份有限公司2024年年度报告.pdf,8,第二节 公司简介和主要财务指标 > 六、近三年主要会计数据和财务指标,营业收入,source_located_single_pass
+RET-022,芯导科技2024年营业收入同比增长多少？,2024,financial_metric,medium,10.15%,docs/test_docs/上海芯导电子科技股份有限公司2024年年度报告.pdf,8,第二节 公司简介和主要财务指标 > 六、近三年主要会计数据和财务指标,营业收入,source_located_single_pass
+RET-023,芯导科技2024年归属于上市公司股东的净利润是多少元？,2024,financial_metric,simple,"111,639,491.31",docs/test_docs/上海芯导电子科技股份有限公司2024年年度报告.pdf,8,第二节 公司简介和主要财务指标 > 六、近三年主要会计数据和财务指标,归属于上市公司股东的净利润,source_located_single_pass
+RET-024,芯导科技2024年归母净利润同比增长多少？,2024,financial_metric,medium,15.70%,docs/test_docs/上海芯导电子科技股份有限公司2024年年度报告.pdf,8,第二节 公司简介和主要财务指标 > 六、近三年主要会计数据和财务指标,归属于上市公司股东的净利润,source_located_single_pass
+RET-025,芯导科技2024年扣除非经常性损益后的归母净利润是多少元？,2024,financial_metric,simple,"58,607,032.90",docs/test_docs/上海芯导电子科技股份有限公司2024年年度报告.pdf,8,第二节 公司简介和主要财务指标 > 六、近三年主要会计数据和财务指标,归属于上市公司股东的扣除非经常性损益的净利润,source_located_single_pass
+RET-026,芯导科技2024年扣非归母净利润同比增长多少？,2024,financial_metric,medium,34.50%,docs/test_docs/上海芯导电子科技股份有限公司2024年年度报告.pdf,8,第二节 公司简介和主要财务指标 > 六、近三年主要会计数据和财务指标,归属于上市公司股东的扣除非经常性损益的净利润,source_located_single_pass
+RET-027,芯导科技2024年经营活动产生的现金流量净额是多少元？,2024,financial_metric,simple,"84,749,309.08",docs/test_docs/上海芯导电子科技股份有限公司2024年年度报告.pdf,8,第二节 公司简介和主要财务指标 > 六、近三年主要会计数据和财务指标,经营活动产生的现金流量净额,source_located_single_pass
+RET-028,芯导科技2024年经营活动现金流量净额同比增长多少？,2024,financial_metric,medium,22.68%,docs/test_docs/上海芯导电子科技股份有限公司2024年年度报告.pdf,8,第二节 公司简介和主要财务指标 > 六、近三年主要会计数据和财务指标,经营活动产生的现金流量净额,source_located_single_pass
+RET-029,芯导科技2024年末归属于上市公司股东的净资产是多少元？,2024,financial_metric,simple,"2,264,139,422.25",docs/test_docs/上海芯导电子科技股份有限公司2024年年度报告.pdf,8,第二节 公司简介和主要财务指标 > 六、近三年主要会计数据和财务指标,归属于上市公司股东的净资产,source_located_single_pass
+RET-030,芯导科技2024年末归母净资产同比增长多少？,2024,financial_metric,medium,1.87%,docs/test_docs/上海芯导电子科技股份有限公司2024年年度报告.pdf,8,第二节 公司简介和主要财务指标 > 六、近三年主要会计数据和财务指标,归属于上市公司股东的净资产,source_located_single_pass
+RET-031,芯导科技2024年末总资产是多少元？,2024,financial_metric,simple,"2,327,935,658.62",docs/test_docs/上海芯导电子科技股份有限公司2024年年度报告.pdf,8,第二节 公司简介和主要财务指标 > 六、近三年主要会计数据和财务指标,总资产,source_located_single_pass
+RET-032,芯导科技2024年末总资产同比增长多少？,2024,financial_metric,medium,2.03%,docs/test_docs/上海芯导电子科技股份有限公司2024年年度报告.pdf,8,第二节 公司简介和主要财务指标 > 六、近三年主要会计数据和财务指标,总资产,source_located_single_pass
+RET-033,芯导科技2024年基本每股收益是多少元？,2024,financial_metric,simple,0.95元/股,docs/test_docs/上海芯导电子科技股份有限公司2024年年度报告.pdf,8,第二节 公司简介和主要财务指标 > 六、近三年主要会计数据和财务指标,基本每股收益,source_located_single_pass
+RET-034,芯导科技2024年稀释每股收益是多少元？,2024,financial_metric,simple,0.95元/股,docs/test_docs/上海芯导电子科技股份有限公司2024年年度报告.pdf,8,第二节 公司简介和主要财务指标 > 六、近三年主要会计数据和财务指标,稀释每股收益,source_located_single_pass
+RET-035,芯导科技2024年扣非后的基本每股收益是多少元？,2024,financial_metric,simple,0.50元/股,docs/test_docs/上海芯导电子科技股份有限公司2024年年度报告.pdf,8,第二节 公司简介和主要财务指标 > 六、近三年主要会计数据和财务指标,扣除非经常性损益后的基本每股收益,source_located_single_pass
+RET-036,芯导科技2024年加权平均净资产收益率是多少？,2024,financial_metric,simple,4.97%,docs/test_docs/上海芯导电子科技股份有限公司2024年年度报告.pdf,8,第二节 公司简介和主要财务指标 > 六、近三年主要会计数据和财务指标,加权平均净资产收益率,source_located_single_pass
+RET-037,芯导科技2024年扣非后的加权平均净资产收益率是多少？,2024,financial_metric,simple,2.61%,docs/test_docs/上海芯导电子科技股份有限公司2024年年度报告.pdf,8,第二节 公司简介和主要财务指标 > 六、近三年主要会计数据和财务指标,扣除非经常性损益后的加权平均净资产收益率,source_located_single_pass
+RET-038,芯导科技2024年研发投入占营业收入的比例是多少？,2024,financial_metric,simple,10.02%,docs/test_docs/上海芯导电子科技股份有限公司2024年年度报告.pdf,8,第二节 公司简介和主要财务指标 > 六、近三年主要会计数据和财务指标,研发投入占营业收入的比例,source_located_single_pass
+RET-039,芯导科技2024年第一季度的营业收入是多少元？,2024,quarterly_metric,simple,"68,696,882.19",docs/test_docs/上海芯导电子科技股份有限公司2024年年度报告.pdf,9,第二节 公司简介和主要财务指标 > 八、2024年分季度主要财务数据,营业收入,source_located_single_pass
+RET-040,芯导科技2024年第二季度的营业收入是多少元？,2024,quarterly_metric,simple,"87,111,101.46",docs/test_docs/上海芯导电子科技股份有限公司2024年年度报告.pdf,9,第二节 公司简介和主要财务指标 > 八、2024年分季度主要财务数据,营业收入,source_located_single_pass
+RET-041,芯导科技2024年第三季度的营业收入是多少元？,2024,quarterly_metric,simple,"98,365,572.61",docs/test_docs/上海芯导电子科技股份有限公司2024年年度报告.pdf,9,第二节 公司简介和主要财务指标 > 八、2024年分季度主要财务数据,营业收入,source_located_single_pass
+RET-042,芯导科技2024年第四季度的营业收入是多少元？,2024,quarterly_metric,simple,"98,768,118.54",docs/test_docs/上海芯导电子科技股份有限公司2024年年度报告.pdf,9,第二节 公司简介和主要财务指标 > 八、2024年分季度主要财务数据,营业收入,source_located_single_pass
+RET-043,芯导科技2024年第一季度的归属于上市公司股东的净利润是多少元？,2024,quarterly_metric,simple,"24,468,672.39",docs/test_docs/上海芯导电子科技股份有限公司2024年年度报告.pdf,9,第二节 公司简介和主要财务指标 > 八、2024年分季度主要财务数据,归属于上市公司股东的净利润,source_located_single_pass
+RET-044,芯导科技2024年第二季度的归属于上市公司股东的净利润是多少元？,2024,quarterly_metric,simple,"27,745,860.66",docs/test_docs/上海芯导电子科技股份有限公司2024年年度报告.pdf,9,第二节 公司简介和主要财务指标 > 八、2024年分季度主要财务数据,归属于上市公司股东的净利润,source_located_single_pass
+RET-045,芯导科技2024年第三季度的归属于上市公司股东的净利润是多少元？,2024,quarterly_metric,simple,"30,409,406.45",docs/test_docs/上海芯导电子科技股份有限公司2024年年度报告.pdf,9,第二节 公司简介和主要财务指标 > 八、2024年分季度主要财务数据,归属于上市公司股东的净利润,source_located_single_pass
+RET-046,芯导科技2024年第四季度的归属于上市公司股东的净利润是多少元？,2024,quarterly_metric,simple,"29,015,551.81",docs/test_docs/上海芯导电子科技股份有限公司2024年年度报告.pdf,9,第二节 公司简介和主要财务指标 > 八、2024年分季度主要财务数据,归属于上市公司股东的净利润,source_located_single_pass
+RET-047,芯导科技2024年高性能数模混合电源管理芯片项目累计投入多少万元？,2024,project_metric,simple,"2,952.01万元",docs/test_docs/上海芯导电子科技股份有限公司2024年年度报告.pdf,23,第三节 管理层讨论与分析 > 在研项目情况,高性能数模混合电源管理芯片开发及产业化,source_located_single_pass
+RET-048,芯导科技2024年TVS产品收入占主营业务收入的比例是多少？,2024,risk_fact,simple,56.23%,docs/test_docs/上海芯导电子科技股份有限公司2024年年度报告.pdf,30,第三节 管理层讨论与分析 > 风险因素,TVS 产品收入占比较高,source_located_single_pass
+RET-049,芯导科技2024年集成电路业务的综合毛利率是多少？,2024,segment_metric,simple,34.43%,docs/test_docs/上海芯导电子科技股份有限公司2024年年度报告.pdf,33,第三节 管理层讨论与分析 > 收入和成本分析,集成电路,source_located_single_pass
+RET-050,芯导科技2024年报告期投资额是多少元？,2024,investment_metric,simple,"36,000,000.00元",docs/test_docs/上海芯导电子科技股份有限公司2024年年度报告.pdf,39,第三节 管理层讨论与分析 > 投资状况分析,报告期投资额,source_located_single_pass
+RET-051,截至2024年末，芯导科技现行有效知识产权共有多少项？,2024,research_fact,simple,120项,docs/test_docs/上海芯导电子科技股份有限公司2024年年度报告.pdf,22,第三节 管理层讨论与分析 > 核心技术与研发进展 > 报告期内获得的研发成果,现行有效知识产权累计,source_located_single_pass
+RET-052,截至2024年末，芯导科技拥有多少项有效发明专利？,2024,research_fact,simple,25项,docs/test_docs/上海芯导电子科技股份有限公司2024年年度报告.pdf,22,第三节 管理层讨论与分析 > 核心技术与研发进展 > 报告期内获得的研发成果,发明专利,source_located_single_pass
+RET-053,截至2024年末，芯导科技拥有多少项有效实用新型专利？,2024,research_fact,simple,36项,docs/test_docs/上海芯导电子科技股份有限公司2024年年度报告.pdf,22,第三节 管理层讨论与分析 > 核心技术与研发进展 > 报告期内获得的研发成果,实用新型,source_located_single_pass
+RET-054,截至2024年末，芯导科技拥有多少项集成电路布图设计专有权？,2024,research_fact,simple,53项,docs/test_docs/上海芯导电子科技股份有限公司2024年年度报告.pdf,22,第三节 管理层讨论与分析 > 核心技术与研发进展 > 报告期内获得的研发成果,集成电路布图设计专有权,source_located_single_pass
+RET-055,截至2024年末，芯导科技拥有多少项商标？,2024,research_fact,simple,6项,docs/test_docs/上海芯导电子科技股份有限公司2024年年度报告.pdf,22,第三节 管理层讨论与分析 > 核心技术与研发进展 > 报告期内获得的研发成果,商标,source_located_single_pass
+RET-056,芯导科技2024年新增授权知识产权多少项？,2024,research_fact,simple,17项,docs/test_docs/上海芯导电子科技股份有限公司2024年年度报告.pdf,22,第三节 管理层讨论与分析 > 核心技术与研发进展 > 报告期内获得的研发成果,新增授权知识产权,source_located_single_pass
+RET-057,芯导科技2024年新增申请发明专利多少项？,2024,research_fact,simple,15项,docs/test_docs/上海芯导电子科技股份有限公司2024年年度报告.pdf,22,第三节 管理层讨论与分析 > 核心技术与研发进展 > 报告期内获得的研发成果,发明专利,source_located_single_pass
+RET-058,芯导科技2024年新增获得发明专利多少项？,2024,research_fact,simple,5项,docs/test_docs/上海芯导电子科技股份有限公司2024年年度报告.pdf,22,第三节 管理层讨论与分析 > 核心技术与研发进展 > 报告期内获得的研发成果,发明专利,source_located_single_pass
+RET-059,芯导科技2024年新增申请实用新型专利多少项？,2024,research_fact,simple,2项,docs/test_docs/上海芯导电子科技股份有限公司2024年年度报告.pdf,22,第三节 管理层讨论与分析 > 核心技术与研发进展 > 报告期内获得的研发成果,实用新型专利,source_located_single_pass
+RET-060,芯导科技2024年新增获得实用新型专利多少项？,2024,research_fact,simple,4项,docs/test_docs/上海芯导电子科技股份有限公司2024年年度报告.pdf,22,第三节 管理层讨论与分析 > 核心技术与研发进展 > 报告期内获得的研发成果,实用新型专利,source_located_single_pass
+RET-061,芯导科技2024年其他知识产权新增申请多少项？,2024,research_fact,simple,15项,docs/test_docs/上海芯导电子科技股份有限公司2024年年度报告.pdf,22,第三节 管理层讨论与分析 > 核心技术与研发进展 > 报告期内获得的研发成果,其他,source_located_single_pass
+RET-062,芯导科技2024年其他知识产权新增获得多少项？,2024,research_fact,simple,8项,docs/test_docs/上海芯导电子科技股份有限公司2024年年度报告.pdf,22,第三节 管理层讨论与分析 > 核心技术与研发进展 > 报告期内获得的研发成果,其他,source_located_single_pass
+RET-063,芯导科技2024年各类知识产权新增申请合计多少项？,2024,research_fact,simple,32项,docs/test_docs/上海芯导电子科技股份有限公司2024年年度报告.pdf,22,第三节 管理层讨论与分析 > 核心技术与研发进展 > 报告期内获得的研发成果,合计,source_located_single_pass
+RET-064,芯导科技2024年各类知识产权新增获得合计多少项？,2024,research_fact,simple,17项,docs/test_docs/上海芯导电子科技股份有限公司2024年年度报告.pdf,22,第三节 管理层讨论与分析 > 核心技术与研发进展 > 报告期内获得的研发成果,合计,source_located_single_pass
+RET-065,芯导科技2024年费用化研发投入是多少元？,2024,research_fact,simple,"35,350,211.68",docs/test_docs/上海芯导电子科技股份有限公司2024年年度报告.pdf,22,第三节 管理层讨论与分析 > 核心技术与研发进展 > 报告期内获得的研发成果,费用化研发投入,source_located_single_pass
+RET-066,芯导科技2024年资本化研发投入是多少元？,2024,research_fact,simple,0,docs/test_docs/上海芯导电子科技股份有限公司2024年年度报告.pdf,22,第三节 管理层讨论与分析 > 核心技术与研发进展 > 报告期内获得的研发成果,资本化研发投入,source_located_single_pass
+RET-067,芯导科技2024年研发投入合计是多少元？,2024,research_fact,simple,"35,350,211.68",docs/test_docs/上海芯导电子科技股份有限公司2024年年度报告.pdf,22,第三节 管理层讨论与分析 > 核心技术与研发进展 > 报告期内获得的研发成果,研发投入合计,source_located_single_pass
+RET-068,芯导科技2024年研发投入较上年度变化多少？,2024,research_fact,medium,-18.12%,docs/test_docs/上海芯导电子科技股份有限公司2024年年度报告.pdf,22,第三节 管理层讨论与分析 > 核心技术与研发进展 > 报告期内获得的研发成果,研发投入合计,source_located_single_pass
+RET-069,芯导科技2024年前五名客户销售额合计是多少万元？,2024,customer_supplier,simple,"17,108.22",docs/test_docs/上海芯导电子科技股份有限公司2024年年度报告.pdf,36,第三节 管理层讨论与分析 > 主要销售客户及主要供应商情况,前五名客户销售额,source_located_single_pass
+RET-070,芯导科技2024年前五名客户销售额占年度销售总额多少？,2024,customer_supplier,simple,48.47%,docs/test_docs/上海芯导电子科技股份有限公司2024年年度报告.pdf,36,第三节 管理层讨论与分析 > 主要销售客户及主要供应商情况,前五名客户销售额,source_located_single_pass
+RET-071,芯导科技2024年第一大客户的销售额是多少万元？,2024,customer_supplier,simple,"8,078.49",docs/test_docs/上海芯导电子科技股份有限公司2024年年度报告.pdf,36,第三节 管理层讨论与分析 > 主要销售客户及主要供应商情况,客户一,source_located_single_pass
+RET-072,芯导科技2024年第一大客户销售额占年度销售总额多少？,2024,customer_supplier,simple,22.89%,docs/test_docs/上海芯导电子科技股份有限公司2024年年度报告.pdf,36,第三节 管理层讨论与分析 > 主要销售客户及主要供应商情况,客户一,source_located_single_pass
+RET-073,芯导科技无锡子公司2024年的净利润是多少万元？,2024,subsidiary_metric,simple,-282.31万元,docs/test_docs/上海芯导电子科技股份有限公司2024年年度报告.pdf,42,第三节 管理层讨论与分析 > 主要控股参股公司分析,芯导科技（无锡）有限公司,source_located_single_pass
+RET-074,审计机构认为芯导科技2024年财务报表是否公允反映了财务状况和经营成果？,2024,audit_fact,medium,是，审计意见认为财务报表在所有重大方面公允反映了相关情况,docs/test_docs/上海芯导电子科技股份有限公司2024年年度报告.pdf,98,第十节 财务报告 > 审计意见,我们认为,source_located_single_pass
+RET-075,芯导科技2024年前五名供应商采购额合计是多少万元？,2024,customer_supplier,simple,"11,829.23",docs/test_docs/上海芯导电子科技股份有限公司2024年年度报告.pdf,36,第三节 管理层讨论与分析 > 主要销售客户及主要供应商情况,前五名供应商采购额,source_located_single_pass
+RET-076,芯导科技2024年前五名供应商采购额占年度采购总额多少？,2024,customer_supplier,simple,51.53%,docs/test_docs/上海芯导电子科技股份有限公司2024年年度报告.pdf,36,第三节 管理层讨论与分析 > 主要销售客户及主要供应商情况,前五名供应商采购额,source_located_single_pass
+RET-077,芯导科技2024年第一大供应商的采购额是多少万元？,2024,customer_supplier,simple,"3,953.52",docs/test_docs/上海芯导电子科技股份有限公司2024年年度报告.pdf,36,第三节 管理层讨论与分析 > 主要销售客户及主要供应商情况,供应商一,source_located_single_pass
+RET-078,芯导科技2024年第一大供应商采购额占年度采购总额多少？,2024,customer_supplier,simple,17.22%,docs/test_docs/上海芯导电子科技股份有限公司2024年年度报告.pdf,36,第三节 管理层讨论与分析 > 主要销售客户及主要供应商情况,供应商一,source_located_single_pass
+RET-079,芯导科技2024年末现金及现金等价物余额是多少元？,2024,cash_flow_statement_metric,simple,"54,103,148.43元",docs/test_docs/上海芯导电子科技股份有限公司2024年年度报告.pdf,110,第十节 财务报告 > 合并现金流量表,期末现金及现金等价物余额,source_located_single_pass
+RET-080,芯导科技2024年末原材料的账面价值是多少元？,2024,inventory_metric,simple,"17,381,261.87元",docs/test_docs/上海芯导电子科技股份有限公司2024年年度报告.pdf,158,第十节 财务报告 > 存货 > 存货分类,原材料,source_located_single_pass
+RET-081,芯导科技2024年的销售费用是多少元？,2024,operating_metric,simple,"7,838,515.98",docs/test_docs/上海芯导电子科技股份有限公司2024年年度报告.pdf,37,第三节 管理层讨论与分析 > 主营业务分析,销售费用,source_located_single_pass
+RET-082,芯导科技2024年的管理费用是多少元？,2024,operating_metric,simple,"19,734,236.69",docs/test_docs/上海芯导电子科技股份有限公司2024年年度报告.pdf,37,第三节 管理层讨论与分析 > 主营业务分析,管理费用,source_located_single_pass
+RET-083,芯导科技2024年的研发费用是多少元？,2024,operating_metric,simple,"35,350,211.68",docs/test_docs/上海芯导电子科技股份有限公司2024年年度报告.pdf,37,第三节 管理层讨论与分析 > 主营业务分析,研发费用,source_located_single_pass
+RET-084,芯导科技2024年的财务费用是多少元？,2024,operating_metric,simple,"-2,713,664.55",docs/test_docs/上海芯导电子科技股份有限公司2024年年度报告.pdf,37,第三节 管理层讨论与分析 > 主营业务分析,财务费用,source_located_single_pass
+RET-085,芯导科技2024年投资活动产生的现金流量净额是多少元？,2024,operating_metric,simple,"-410,557,951.57",docs/test_docs/上海芯导电子科技股份有限公司2024年年度报告.pdf,37,第三节 管理层讨论与分析 > 主营业务分析,投资活动产生的现金流量净额,source_located_single_pass
+RET-086,芯导科技2024年筹资活动产生的现金流量净额是多少元？,2024,operating_metric,simple,"-71,251,612.22",docs/test_docs/上海芯导电子科技股份有限公司2024年年度报告.pdf,37,第三节 管理层讨论与分析 > 主营业务分析,筹资活动产生的现金流量净额,source_located_single_pass
+RET-087,芯导科技2024年经营活动现金流量净额增长的主要原因是什么？,2024,narrative_fact,medium,公司营业收入增加，收到货款增加,docs/test_docs/上海芯导电子科技股份有限公司2024年年度报告.pdf,37,第三节 管理层讨论与分析 > 主营业务分析,经营活动产生的现金流量净额变动原因说明,source_located_single_pass
+RET-088,芯导科技2024年投资活动现金流量净额变动的主要原因是什么？,2024,narrative_fact,medium,使用暂时闲置资金进行现金管理,docs/test_docs/上海芯导电子科技股份有限公司2024年年度报告.pdf,37,第三节 管理层讨论与分析 > 主营业务分析,投资活动产生的现金流量净额变动原因说明,source_located_single_pass
+RET-089,芯导科技2024年末货币资金是多少元？,2024,balance_sheet_metric,simple,"54,103,148.43",docs/test_docs/上海芯导电子科技股份有限公司2024年年度报告.pdf,38,第三节 管理层讨论与分析 > 资产、负债情况分析,货币资金,source_located_single_pass
+RET-090,芯导科技2024年末交易性金融资产是多少元？,2024,balance_sheet_metric,simple,"1,699,071,411.17",docs/test_docs/上海芯导电子科技股份有限公司2024年年度报告.pdf,38,第三节 管理层讨论与分析 > 资产、负债情况分析,交易性金融资产,source_located_single_pass
+RET-091,芯导科技2024年末应收账款是多少元？,2024,balance_sheet_metric,simple,"26,598,531.32",docs/test_docs/上海芯导电子科技股份有限公司2024年年度报告.pdf,38,第三节 管理层讨论与分析 > 资产、负债情况分析,应收账款,source_located_single_pass
+RET-092,芯导科技2024年末存货是多少元？,2024,balance_sheet_metric,simple,"43,867,541.18",docs/test_docs/上海芯导电子科技股份有限公司2024年年度报告.pdf,38,第三节 管理层讨论与分析 > 资产、负债情况分析,存货,source_located_single_pass
+RET-093,芯导科技2024年末一年内到期的非流动资产是多少元？,2024,balance_sheet_metric,simple,"325,559,143.84",docs/test_docs/上海芯导电子科技股份有限公司2024年年度报告.pdf,38,第三节 管理层讨论与分析 > 资产、负债情况分析,一年内到期的非流动资产,source_located_single_pass
+RET-094,芯导科技2024年末长期股权投资是多少元？,2024,balance_sheet_metric,simple,"35,437,467.45",docs/test_docs/上海芯导电子科技股份有限公司2024年年度报告.pdf,38,第三节 管理层讨论与分析 > 资产、负债情况分析,长期股权投资,source_located_single_pass
+RET-095,芯导科技2024年末固定资产是多少元？,2024,balance_sheet_metric,simple,"135,917,111.42",docs/test_docs/上海芯导电子科技股份有限公司2024年年度报告.pdf,38,第三节 管理层讨论与分析 > 资产、负债情况分析,固定资产,source_located_single_pass
+RET-096,芯导科技2024年末应付账款是多少元？,2024,balance_sheet_metric,simple,"43,936,618.52",docs/test_docs/上海芯导电子科技股份有限公司2024年年度报告.pdf,38,第三节 管理层讨论与分析 > 资产、负债情况分析,应付账款,source_located_single_pass
+RET-097,芯导科技2024年末在职员工总数是多少人？,2024,employee_fact,simple,118人,docs/test_docs/上海芯导电子科技股份有限公司2024年年度报告.pdf,53,第四节 公司治理 > 员工情况,在职员工的数量合计,source_located_single_pass
+RET-098,芯导科技2024年末技术人员有多少人？,2024,employee_fact,simple,53人,docs/test_docs/上海芯导电子科技股份有限公司2024年年度报告.pdf,53,第四节 公司治理 > 员工情况,技术人员,source_located_single_pass
+RET-099,芯导科技2024年度拟每10股派发多少元现金红利？,2024,dividend_fact,simple,8.00元,docs/test_docs/上海芯导电子科技股份有限公司2024年年度报告.pdf,54,第四节 公司治理 > 利润分配预案,每 10 股派发现金红利,source_located_single_pass
+RET-100,芯导科技2024年度拟派发现金红利合计多少元？,2024,dividend_fact,simple,"94,080,000.00元",docs/test_docs/上海芯导电子科技股份有限公司2024年年度报告.pdf,54,第四节 公司治理 > 利润分配预案,合计拟派发现金红利,source_located_single_pass
+RET-101,芯导科技2025年年报中的公司中文全称是什么？,2025,basic_fact,simple,上海芯导电子科技股份有限公司,docs/json_docs/MinerU_上海芯导电子科技股份有限公司财报_2025__20260411100646.json,7,第二节 公司简介和主要财务指标,公司的中文名称,source_located_single_pass
+RET-102,芯导科技2025年年报中的公司中文简称是什么？,2025,basic_fact,simple,芯导科技,docs/json_docs/MinerU_上海芯导电子科技股份有限公司财报_2025__20260411100646.json,7,第二节 公司简介和主要财务指标,公司的中文简称,source_located_single_pass
+RET-103,芯导科技2025年年报披露的英文全称是什么？,2025,basic_fact,simple,"Shanghai Prisemi Electronics Co., Ltd.",docs/json_docs/MinerU_上海芯导电子科技股份有限公司财报_2025__20260411100646.json,7,第二节 公司简介和主要财务指标,公司的外文名称,source_located_single_pass
+RET-104,芯导科技2025年年报披露的英文简称是什么？,2025,basic_fact,simple,Prisemi,docs/json_docs/MinerU_上海芯导电子科技股份有限公司财报_2025__20260411100646.json,7,第二节 公司简介和主要财务指标,公司的外文名称缩写,source_located_single_pass
+RET-105,芯导科技2025年年报披露的法定代表人是谁？,2025,basic_fact,simple,欧新华,docs/json_docs/MinerU_上海芯导电子科技股份有限公司财报_2025__20260411100646.json,7,第二节 公司简介和主要财务指标,公司的法定代表人,source_located_single_pass
+RET-106,芯导科技2025年披露的注册地址在哪里？,2025,basic_fact,simple,中国（上海）自由贸易试验区祖冲之路2277弄7号,docs/json_docs/MinerU_上海芯导电子科技股份有限公司财报_2025__20260411100646.json,7,第二节 公司简介和主要财务指标,公司注册地址,source_located_single_pass
+RET-107,芯导科技2025年披露的办公地址邮政编码有哪些？,2025,basic_fact,simple,201210; 201203,docs/json_docs/MinerU_上海芯导电子科技股份有限公司财报_2025__20260411100646.json,7,第二节 公司简介和主要财务指标,公司办公地址的邮政编码,source_located_single_pass
+RET-108,芯导科技2025年年报披露的公司网址是什么？,2025,basic_fact,simple,http://www.prisemi.com,docs/json_docs/MinerU_上海芯导电子科技股份有限公司财报_2025__20260411100646.json,7,第二节 公司简介和主要财务指标,公司网址,source_located_single_pass
+RET-109,审计机构认为芯导科技2025年财务报表是否公允反映了财务状况和经营成果？,2025,audit_fact,medium,是，审计意见认为财务报表在所有重大方面公允反映了相关情况,docs/json_docs/MinerU_上海芯导电子科技股份有限公司财报_2025__20260411100646.json,96,第八节 财务报告 > 审计意见,我们认为,source_located_single_pass
+RET-110,芯导科技2025年年报中的董事会秘书是谁？,2025,basic_fact,simple,兰芳云,docs/json_docs/MinerU_上海芯导电子科技股份有限公司财报_2025__20260411100646.json,7,第二节 公司简介和主要财务指标,董事会秘书,source_located_single_pass
+RET-111,芯导科技2025年年报中的证券事务代表是谁？,2025,basic_fact,simple,闵雨琦,docs/json_docs/MinerU_上海芯导电子科技股份有限公司财报_2025__20260411100646.json,7,第二节 公司简介和主要财务指标,证券事务代表,source_located_single_pass
+RET-112,芯导科技2025年末流动资产合计是多少元？,2025,financial_statement_metric,simple,"2,147,087,686.04元",docs/json_docs/MinerU_上海芯导电子科技股份有限公司财报_2025__20260411100646.json,101,第八节 财务报告 > 合并资产负债表,流动资产合计,source_located_single_pass
+RET-113,芯导科技2025年末负债合计是多少元？,2025,financial_statement_metric,simple,"58,909,264.28元",docs/json_docs/MinerU_上海芯导电子科技股份有限公司财报_2025__20260411100646.json,101,第八节 财务报告 > 合并资产负债表,负债合计,source_located_single_pass
+RET-114,芯导科技2025年利润总额是多少元？,2025,financial_statement_metric,simple,"114,482,387.41元",docs/json_docs/MinerU_上海芯导电子科技股份有限公司财报_2025__20260411100646.json,105,第八节 财务报告 > 合并利润表,利润总额,source_located_single_pass
+RET-115,芯导科技2025年聘请的境内会计师事务所是哪家？,2025,basic_fact,simple,天职国际会计师事务所（特殊普通合伙）,docs/json_docs/MinerU_上海芯导电子科技股份有限公司财报_2025__20260411100646.json,7,第二节 公司简介和主要财务指标,公司聘请的会计师事务所,source_located_single_pass
+RET-116,芯导科技2025年持续督导的保荐机构是哪家？,2025,basic_fact,simple,国元证券股份有限公司,docs/json_docs/MinerU_上海芯导电子科技股份有限公司财报_2025__20260411100646.json,7,第二节 公司简介和主要财务指标,报告期内履行持续督导职责的保荐机构,source_located_single_pass
+RET-117,芯导科技2025年的营业收入是多少元？,2025,financial_metric,simple,"393,607,502.95",docs/json_docs/MinerU_上海芯导电子科技股份有限公司财报_2025__20260411100646.json,8,第二节 公司简介和主要财务指标 > 六、近三年主要会计数据和财务指标,营业收入,source_located_single_pass
+RET-118,芯导科技2025年营业收入同比增长多少？,2025,financial_metric,medium,11.52%,docs/json_docs/MinerU_上海芯导电子科技股份有限公司财报_2025__20260411100646.json,8,第二节 公司简介和主要财务指标 > 六、近三年主要会计数据和财务指标,营业收入,source_located_single_pass
+RET-119,芯导科技2025年归属于上市公司股东的净利润是多少元？,2025,financial_metric,simple,"106,152,925.57",docs/json_docs/MinerU_上海芯导电子科技股份有限公司财报_2025__20260411100646.json,8,第二节 公司简介和主要财务指标 > 六、近三年主要会计数据和财务指标,归属于上市公司股东的净利润,source_located_single_pass
+RET-120,芯导科技2025年归母净利润同比变化多少？,2025,financial_metric,medium,-4.91%,docs/json_docs/MinerU_上海芯导电子科技股份有限公司财报_2025__20260411100646.json,8,第二节 公司简介和主要财务指标 > 六、近三年主要会计数据和财务指标,归属于上市公司股东的净利润,source_located_single_pass
+RET-121,芯导科技2025年扣除非经常性损益后的归母净利润是多少元？,2025,financial_metric,simple,"68,886,393.66",docs/json_docs/MinerU_上海芯导电子科技股份有限公司财报_2025__20260411100646.json,8,第二节 公司简介和主要财务指标 > 六、近三年主要会计数据和财务指标,归属于上市公司股东的扣除非经常性损益的净利润,source_located_single_pass
+RET-122,芯导科技2025年扣非归母净利润同比增长多少？,2025,financial_metric,medium,17.54%,docs/json_docs/MinerU_上海芯导电子科技股份有限公司财报_2025__20260411100646.json,8,第二节 公司简介和主要财务指标 > 六、近三年主要会计数据和财务指标,归属于上市公司股东的扣除非经常性损益的净利润,source_located_single_pass
+RET-123,芯导科技2025年经营活动产生的现金流量净额是多少元？,2025,financial_metric,simple,"62,787,071.96",docs/json_docs/MinerU_上海芯导电子科技股份有限公司财报_2025__20260411100646.json,8,第二节 公司简介和主要财务指标 > 六、近三年主要会计数据和财务指标,经营活动产生的现金流量净额,source_located_single_pass
+RET-124,芯导科技2025年经营活动现金流量净额同比变化多少？,2025,financial_metric,medium,-25.91%,docs/json_docs/MinerU_上海芯导电子科技股份有限公司财报_2025__20260411100646.json,8,第二节 公司简介和主要财务指标 > 六、近三年主要会计数据和财务指标,经营活动产生的现金流量净额,source_located_single_pass
+RET-125,芯导科技2025年末归属于上市公司股东的净资产是多少元？,2025,financial_metric,simple,"2,270,493,804.73",docs/json_docs/MinerU_上海芯导电子科技股份有限公司财报_2025__20260411100646.json,8,第二节 公司简介和主要财务指标 > 六、近三年主要会计数据和财务指标,归属于上市公司股东的净资产,source_located_single_pass
+RET-126,芯导科技2025年末归母净资产同比增长多少？,2025,financial_metric,medium,0.28%,docs/json_docs/MinerU_上海芯导电子科技股份有限公司财报_2025__20260411100646.json,8,第二节 公司简介和主要财务指标 > 六、近三年主要会计数据和财务指标,归属于上市公司股东的净资产,source_located_single_pass
+RET-127,芯导科技2025年末总资产是多少元？,2025,financial_metric,simple,"2,329,403,069.01",docs/json_docs/MinerU_上海芯导电子科技股份有限公司财报_2025__20260411100646.json,8,第二节 公司简介和主要财务指标 > 六、近三年主要会计数据和财务指标,总资产,source_located_single_pass
+RET-128,芯导科技2025年末总资产同比增长多少？,2025,financial_metric,medium,0.06%,docs/json_docs/MinerU_上海芯导电子科技股份有限公司财报_2025__20260411100646.json,8,第二节 公司简介和主要财务指标 > 六、近三年主要会计数据和财务指标,总资产,source_located_single_pass
+RET-129,芯导科技2025年基本每股收益是多少元？,2025,financial_metric,simple,0.90元/股,docs/json_docs/MinerU_上海芯导电子科技股份有限公司财报_2025__20260411100646.json,8,第二节 公司简介和主要财务指标 > 六、近三年主要会计数据和财务指标,基本每股收益,source_located_single_pass
+RET-130,芯导科技2025年稀释每股收益是多少元？,2025,financial_metric,simple,0.90元/股,docs/json_docs/MinerU_上海芯导电子科技股份有限公司财报_2025__20260411100646.json,8,第二节 公司简介和主要财务指标 > 六、近三年主要会计数据和财务指标,稀释每股收益,source_located_single_pass
+RET-131,芯导科技2025年扣非后的基本每股收益是多少元？,2025,financial_metric,simple,0.59元/股,docs/json_docs/MinerU_上海芯导电子科技股份有限公司财报_2025__20260411100646.json,8,第二节 公司简介和主要财务指标 > 六、近三年主要会计数据和财务指标,扣除非经常性损益后的基本每股收益,source_located_single_pass
+RET-132,芯导科技2025年加权平均净资产收益率是多少？,2025,financial_metric,simple,4.69%,docs/json_docs/MinerU_上海芯导电子科技股份有限公司财报_2025__20260411100646.json,8,第二节 公司简介和主要财务指标 > 六、近三年主要会计数据和财务指标,加权平均净资产收益率,source_located_single_pass
+RET-133,芯导科技2025年扣非后的加权平均净资产收益率是多少？,2025,financial_metric,simple,3.04%,docs/json_docs/MinerU_上海芯导电子科技股份有限公司财报_2025__20260411100646.json,8,第二节 公司简介和主要财务指标 > 六、近三年主要会计数据和财务指标,扣除非经常性损益后的加权平均净资产收益率,source_located_single_pass
+RET-134,芯导科技2025年研发投入占营业收入的比例是多少？,2025,financial_metric,simple,7.89%,docs/json_docs/MinerU_上海芯导电子科技股份有限公司财报_2025__20260411100646.json,8,第二节 公司简介和主要财务指标 > 六、近三年主要会计数据和财务指标,研发投入占营业收入的比例,source_located_single_pass
+RET-135,芯导科技2025年第一季度的营业收入是多少元？,2025,quarterly_metric,simple,"74,262,850.66",docs/json_docs/MinerU_上海芯导电子科技股份有限公司财报_2025__20260411100646.json,9,第二节 公司简介和主要财务指标 > 八、2025年分季度主要财务数据,营业收入,source_located_single_pass
+RET-136,芯导科技2025年第二季度的营业收入是多少元？,2025,quarterly_metric,simple,"108,166,308.65",docs/json_docs/MinerU_上海芯导电子科技股份有限公司财报_2025__20260411100646.json,9,第二节 公司简介和主要财务指标 > 八、2025年分季度主要财务数据,营业收入,source_located_single_pass
+RET-137,芯导科技2025年第三季度的营业收入是多少元？,2025,quarterly_metric,simple,"108,176,534.14",docs/json_docs/MinerU_上海芯导电子科技股份有限公司财报_2025__20260411100646.json,9,第二节 公司简介和主要财务指标 > 八、2025年分季度主要财务数据,营业收入,source_located_single_pass
+RET-138,芯导科技2025年第四季度的营业收入是多少元？,2025,quarterly_metric,simple,"103,001,809.50",docs/json_docs/MinerU_上海芯导电子科技股份有限公司财报_2025__20260411100646.json,9,第二节 公司简介和主要财务指标 > 八、2025年分季度主要财务数据,营业收入,source_located_single_pass
+RET-139,芯导科技2025年第一季度的归属于上市公司股东的净利润是多少元？,2025,quarterly_metric,simple,"24,071,129.24",docs/json_docs/MinerU_上海芯导电子科技股份有限公司财报_2025__20260411100646.json,9,第二节 公司简介和主要财务指标 > 八、2025年分季度主要财务数据,归属于上市公司股东的净利润,source_located_single_pass
+RET-140,芯导科技2025年第二季度的归属于上市公司股东的净利润是多少元？,2025,quarterly_metric,simple,"26,127,989.84",docs/json_docs/MinerU_上海芯导电子科技股份有限公司财报_2025__20260411100646.json,9,第二节 公司简介和主要财务指标 > 八、2025年分季度主要财务数据,归属于上市公司股东的净利润,source_located_single_pass
+RET-141,芯导科技2025年第三季度的归属于上市公司股东的净利润是多少元？,2025,quarterly_metric,simple,"23,428,646.98",docs/json_docs/MinerU_上海芯导电子科技股份有限公司财报_2025__20260411100646.json,9,第二节 公司简介和主要财务指标 > 八、2025年分季度主要财务数据,归属于上市公司股东的净利润,source_located_single_pass
+RET-142,芯导科技2025年第四季度的归属于上市公司股东的净利润是多少元？,2025,quarterly_metric,simple,"32,525,159.51",docs/json_docs/MinerU_上海芯导电子科技股份有限公司财报_2025__20260411100646.json,9,第二节 公司简介和主要财务指标 > 八、2025年分季度主要财务数据,归属于上市公司股东的净利润,source_located_single_pass
+RET-143,芯导科技2025年销售商品、提供劳务收到的现金是多少元？,2025,cash_flow_statement_metric,simple,"408,745,060.66元",docs/json_docs/MinerU_上海芯导电子科技股份有限公司财报_2025__20260411100646.json,108,第八节 财务报告 > 合并现金流量表,销售商品、提供劳务收到的现金,source_located_single_pass
+RET-144,芯导科技2025年末原材料的账面价值是多少元？,2025,inventory_metric,simple,"17,869,473.48元",docs/json_docs/MinerU_上海芯导电子科技股份有限公司财报_2025__20260411100646.json,157,第八节 财务报告 > 存货 > 存货分类,原材料,source_located_single_pass
+RET-145,芯导科技2025年末研发设备的账面价值是多少元？,2025,fixed_asset_metric,simple,"835,522.99元",docs/json_docs/MinerU_上海芯导电子科技股份有限公司财报_2025__20260411100646.json,164,第八节 财务报告 > 固定资产情况,期末账面价值,source_located_single_pass
+RET-146,芯导科技2025年末未分配利润是多少元？,2025,equity_metric,simple,"301,301,829.21元",docs/json_docs/MinerU_上海芯导电子科技股份有限公司财报_2025__20260411100646.json,178,第八节 财务报告 > 未分配利润,期末未分配利润,source_located_single_pass
+RET-147,芯导科技2025年新增申请发明专利多少项？,2025,research_fact,simple,10项,docs/json_docs/MinerU_上海芯导电子科技股份有限公司财报_2025__20260411100646.json,24,第三节 管理层讨论与分析 > 核心技术与研发进展,发明专利,source_located_single_pass
+RET-148,芯导科技2025年新增获得发明专利多少项？,2025,research_fact,simple,13项,docs/json_docs/MinerU_上海芯导电子科技股份有限公司财报_2025__20260411100646.json,24,第三节 管理层讨论与分析 > 核心技术与研发进展,发明专利,source_located_single_pass
+RET-149,截至2025年末，芯导科技累计申请发明专利多少项？,2025,research_fact,simple,82项,docs/json_docs/MinerU_上海芯导电子科技股份有限公司财报_2025__20260411100646.json,24,第三节 管理层讨论与分析 > 核心技术与研发进展,发明专利,source_located_single_pass
+RET-150,截至2025年末，芯导科技累计获得发明专利多少项？,2025,research_fact,simple,38项,docs/json_docs/MinerU_上海芯导电子科技股份有限公司财报_2025__20260411100646.json,24,第三节 管理层讨论与分析 > 核心技术与研发进展,发明专利,source_located_single_pass
+RET-151,芯导科技2025年新增申请实用新型专利多少项？,2025,research_fact,simple,2项,docs/json_docs/MinerU_上海芯导电子科技股份有限公司财报_2025__20260411100646.json,24,第三节 管理层讨论与分析 > 核心技术与研发进展,实用新型专利,source_located_single_pass
+RET-152,芯导科技2025年新增获得实用新型专利多少项？,2025,research_fact,simple,2项,docs/json_docs/MinerU_上海芯导电子科技股份有限公司财报_2025__20260411100646.json,24,第三节 管理层讨论与分析 > 核心技术与研发进展,实用新型专利,source_located_single_pass
+RET-153,截至2025年末，芯导科技累计申请实用新型专利多少项？,2025,research_fact,simple,56项,docs/json_docs/MinerU_上海芯导电子科技股份有限公司财报_2025__20260411100646.json,24,第三节 管理层讨论与分析 > 核心技术与研发进展,实用新型专利,source_located_single_pass
+RET-154,截至2025年末，芯导科技累计获得实用新型专利多少项？,2025,research_fact,simple,38项,docs/json_docs/MinerU_上海芯导电子科技股份有限公司财报_2025__20260411100646.json,24,第三节 管理层讨论与分析 > 核心技术与研发进展,实用新型专利,source_located_single_pass
+RET-155,芯导科技2025年各类研发成果新增申请合计多少项？,2025,research_fact,simple,19项,docs/json_docs/MinerU_上海芯导电子科技股份有限公司财报_2025__20260411100646.json,24,第三节 管理层讨论与分析 > 核心技术与研发进展,合计,source_located_single_pass
+RET-156,芯导科技2025年各类研发成果新增获得合计多少项？,2025,research_fact,simple,25项,docs/json_docs/MinerU_上海芯导电子科技股份有限公司财报_2025__20260411100646.json,24,第三节 管理层讨论与分析 > 核心技术与研发进展,合计,source_located_single_pass
+RET-157,截至2025年末，芯导科技各类研发成果累计申请多少项？,2025,research_fact,simple,223项,docs/json_docs/MinerU_上海芯导电子科技股份有限公司财报_2025__20260411100646.json,24,第三节 管理层讨论与分析 > 核心技术与研发进展,合计,source_located_single_pass
+RET-158,截至2025年末，芯导科技各类研发成果累计获得多少项？,2025,research_fact,simple,141项,docs/json_docs/MinerU_上海芯导电子科技股份有限公司财报_2025__20260411100646.json,24,第三节 管理层讨论与分析 > 核心技术与研发进展,合计,source_located_single_pass
+RET-159,芯导科技2025年费用化研发投入是多少元？,2025,research_fact,simple,"31,070,863.06",docs/json_docs/MinerU_上海芯导电子科技股份有限公司财报_2025__20260411100646.json,24,第三节 管理层讨论与分析 > 核心技术与研发进展,费用化研发投入,source_located_single_pass
+RET-160,芯导科技2025年研发投入合计是多少元？,2025,research_fact,simple,"31,070,863.06",docs/json_docs/MinerU_上海芯导电子科技股份有限公司财报_2025__20260411100646.json,24,第三节 管理层讨论与分析 > 核心技术与研发进展,研发投入合计,source_located_single_pass
+RET-161,芯导科技2025年主营业务分析表中的营业收入是多少元？,2025,operating_metric,simple,"393,607,502.95",docs/json_docs/MinerU_上海芯导电子科技股份有限公司财报_2025__20260411100646.json,33,第三节 管理层讨论与分析 > 主营业务分析,营业收入,source_located_single_pass
+RET-162,芯导科技2025年的营业成本是多少元？,2025,operating_metric,simple,"264,341,326.02",docs/json_docs/MinerU_上海芯导电子科技股份有限公司财报_2025__20260411100646.json,33,第三节 管理层讨论与分析 > 主营业务分析,营业成本,source_located_single_pass
+RET-163,芯导科技2025年的销售费用是多少元？,2025,operating_metric,simple,"9,006,020.84",docs/json_docs/MinerU_上海芯导电子科技股份有限公司财报_2025__20260411100646.json,33,第三节 管理层讨论与分析 > 主营业务分析,销售费用,source_located_single_pass
+RET-164,芯导科技2025年的管理费用是多少元？,2025,operating_metric,simple,"19,299,509.16",docs/json_docs/MinerU_上海芯导电子科技股份有限公司财报_2025__20260411100646.json,33,第三节 管理层讨论与分析 > 主营业务分析,管理费用,source_located_single_pass
+RET-165,芯导科技2025年的财务费用是多少元？,2025,operating_metric,simple,"-642,779.62",docs/json_docs/MinerU_上海芯导电子科技股份有限公司财报_2025__20260411100646.json,33,第三节 管理层讨论与分析 > 主营业务分析,财务费用,source_located_single_pass
+RET-166,芯导科技2025年的研发费用是多少元？,2025,operating_metric,simple,"31,070,863.06",docs/json_docs/MinerU_上海芯导电子科技股份有限公司财报_2025__20260411100646.json,33,第三节 管理层讨论与分析 > 主营业务分析,研发费用,source_located_single_pass
+RET-167,芯导科技2025年经营活动现金流量净额是多少元？,2025,operating_metric,simple,"62,787,071.96",docs/json_docs/MinerU_上海芯导电子科技股份有限公司财报_2025__20260411100646.json,33,第三节 管理层讨论与分析 > 主营业务分析,经营活动产生的现金流量净额,source_located_single_pass
+RET-168,芯导科技2025年投资活动现金流量净额是多少元？,2025,operating_metric,simple,"117,471,251.62",docs/json_docs/MinerU_上海芯导电子科技股份有限公司财报_2025__20260411100646.json,33,第三节 管理层讨论与分析 > 主营业务分析,投资活动产生的现金流量净额,source_located_single_pass
+RET-169,芯导科技2025年筹资活动现金流量净额是多少元？,2025,operating_metric,simple,"-94,794,471.21",docs/json_docs/MinerU_上海芯导电子科技股份有限公司财报_2025__20260411100646.json,33,第三节 管理层讨论与分析 > 主营业务分析,筹资活动产生的现金流量净额,source_located_single_pass
+RET-170,芯导科技2025年营业成本同比增长多少？,2025,operating_metric,medium,14.22%,docs/json_docs/MinerU_上海芯导电子科技股份有限公司财报_2025__20260411100646.json,33,第三节 管理层讨论与分析 > 主营业务分析,营业成本,source_located_single_pass
+RET-171,芯导科技2025年集成电路业务营业收入是多少万元？,2025,segment_metric,simple,"39,360.75",docs/json_docs/MinerU_上海芯导电子科技股份有限公司财报_2025__20260411100646.json,34,第三节 管理层讨论与分析 > 收入和成本分析,集成电路,source_located_single_pass
+RET-172,芯导科技2025年集成电路业务毛利率是多少？,2025,segment_metric,simple,32.84%,docs/json_docs/MinerU_上海芯导电子科技股份有限公司财报_2025__20260411100646.json,34,第三节 管理层讨论与分析 > 收入和成本分析,集成电路,source_located_single_pass
+RET-173,芯导科技2025年功率器件营业收入是多少万元？,2025,segment_metric,simple,"36,050.77",docs/json_docs/MinerU_上海芯导电子科技股份有限公司财报_2025__20260411100646.json,34,第三节 管理层讨论与分析 > 收入和成本分析,功率器件,source_located_single_pass
+RET-174,芯导科技2025年功率器件毛利率是多少？,2025,segment_metric,simple,33.13%,docs/json_docs/MinerU_上海芯导电子科技股份有限公司财报_2025__20260411100646.json,34,第三节 管理层讨论与分析 > 收入和成本分析,功率器件,source_located_single_pass
+RET-175,芯导科技2025年TVS产品营业收入是多少万元？,2025,segment_metric,simple,"22,154.52",docs/json_docs/MinerU_上海芯导电子科技股份有限公司财报_2025__20260411100646.json,34,第三节 管理层讨论与分析 > 收入和成本分析,TVS,source_located_single_pass
+RET-176,芯导科技2025年TVS产品毛利率是多少？,2025,segment_metric,simple,32.58%,docs/json_docs/MinerU_上海芯导电子科技股份有限公司财报_2025__20260411100646.json,34,第三节 管理层讨论与分析 > 收入和成本分析,TVS,source_located_single_pass
+RET-177,芯导科技2025年MOSFET产品营业收入是多少万元？,2025,segment_metric,simple,"8,903.82",docs/json_docs/MinerU_上海芯导电子科技股份有限公司财报_2025__20260411100646.json,34,第三节 管理层讨论与分析 > 收入和成本分析,MOSFET,source_located_single_pass
+RET-178,芯导科技2025年MOSFET产品毛利率是多少？,2025,segment_metric,simple,34.85%,docs/json_docs/MinerU_上海芯导电子科技股份有限公司财报_2025__20260411100646.json,34,第三节 管理层讨论与分析 > 收入和成本分析,MOSFET,source_located_single_pass
+RET-179,芯导科技2025年肖特基产品营业收入是多少万元？,2025,segment_metric,simple,"3,668.42",docs/json_docs/MinerU_上海芯导电子科技股份有限公司财报_2025__20260411100646.json,34,第三节 管理层讨论与分析 > 收入和成本分析,肖特基,source_located_single_pass
+RET-180,芯导科技2025年肖特基产品毛利率是多少？,2025,segment_metric,simple,33.29%,docs/json_docs/MinerU_上海芯导电子科技股份有限公司财报_2025__20260411100646.json,34,第三节 管理层讨论与分析 > 收入和成本分析,肖特基,source_located_single_pass
+RET-181,芯导科技2025年功率IC营业收入是多少万元？,2025,segment_metric,simple,"3,309.98",docs/json_docs/MinerU_上海芯导电子科技股份有限公司财报_2025__20260411100646.json,34,第三节 管理层讨论与分析 > 收入和成本分析,功率IC,source_located_single_pass
+RET-182,芯导科技2025年功率IC毛利率是多少？,2025,segment_metric,simple,29.75%,docs/json_docs/MinerU_上海芯导电子科技股份有限公司财报_2025__20260411100646.json,34,第三节 管理层讨论与分析 > 收入和成本分析,功率IC,source_located_single_pass
+RET-183,芯导科技2025年中国大陆地区营业收入是多少万元？,2025,segment_metric,simple,"36,650.54",docs/json_docs/MinerU_上海芯导电子科技股份有限公司财报_2025__20260411100646.json,34,第三节 管理层讨论与分析 > 收入和成本分析,中国大陆,source_located_single_pass
+RET-184,芯导科技2025年中国大陆以外地区营业收入是多少万元？,2025,segment_metric,simple,"2,710.21",docs/json_docs/MinerU_上海芯导电子科技股份有限公司财报_2025__20260411100646.json,34,第三节 管理层讨论与分析 > 收入和成本分析,中国大陆以外,source_located_single_pass
+RET-185,芯导科技2025年前五名客户销售额合计是多少万元？,2025,customer_supplier,simple,"20,225.35",docs/json_docs/MinerU_上海芯导电子科技股份有限公司财报_2025__20260411100646.json,36,第三节 管理层讨论与分析 > 主要销售客户及主要供应商情况,公司前五名客户,source_located_single_pass
+RET-186,芯导科技2025年前五名客户销售额占年度销售总额多少？,2025,customer_supplier,simple,51.39%,docs/json_docs/MinerU_上海芯导电子科技股份有限公司财报_2025__20260411100646.json,36,第三节 管理层讨论与分析 > 主要销售客户及主要供应商情况,公司前五名客户,source_located_single_pass
+RET-187,芯导科技2025年投资收益合计是多少元？,2025,investment_metric,simple,"38,075,490.56元",docs/json_docs/MinerU_上海芯导电子科技股份有限公司财报_2025__20260411100646.json,182,第八节 财务报告 > 投资收益,投资收益,source_located_single_pass
+RET-188,芯导科技2025年资产减值损失合计是多少元？,2025,impairment_metric,simple,"-2,026,203.23元",docs/json_docs/MinerU_上海芯导电子科技股份有限公司财报_2025__20260411100646.json,183,第八节 财务报告 > 资产减值损失,资产减值损失,source_located_single_pass
+RET-189,芯导科技2025年前五名供应商采购额合计是多少万元？,2025,customer_supplier,simple,"15,520.27",docs/json_docs/MinerU_上海芯导电子科技股份有限公司财报_2025__20260411100646.json,37,第三节 管理层讨论与分析 > 主要销售客户及主要供应商情况,公司前五名供应商,source_located_single_pass
+RET-190,芯导科技2025年前五名供应商采购额占年度采购总额多少？,2025,customer_supplier,simple,57.00%,docs/json_docs/MinerU_上海芯导电子科技股份有限公司财报_2025__20260411100646.json,37,第三节 管理层讨论与分析 > 主要销售客户及主要供应商情况,公司前五名供应商,source_located_single_pass
+RET-191,芯导科技2025年末可随时用于支付的银行存款是多少元？,2025,cash_metric,simple,"95,656,952.53元",docs/json_docs/MinerU_上海芯导电子科技股份有限公司财报_2025__20260411100646.json,188,第八节 财务报告 > 现金和现金等价物的构成,可随时用于支付的银行存款,source_located_single_pass
+RET-192,芯导科技2025年年报披露的最终控制方是谁？,2025,related_party_fact,simple,欧新华,docs/json_docs/MinerU_上海芯导电子科技股份有限公司财报_2025__20260411100646.json,201,第八节 财务报告 > 关联方及关联交易,本企业最终控制方,source_located_single_pass
+RET-193,芯导科技2025年末货币资金是多少元？,2025,balance_sheet_metric,simple,"138,659,733.35",docs/json_docs/MinerU_上海芯导电子科技股份有限公司财报_2025__20260411100646.json,39,第三节 管理层讨论与分析 > 资产、负债情况分析,货币资金,source_located_single_pass
+RET-194,芯导科技2025年末交易性金融资产是多少元？,2025,balance_sheet_metric,simple,"1,930,923,341.87",docs/json_docs/MinerU_上海芯导电子科技股份有限公司财报_2025__20260411100646.json,39,第三节 管理层讨论与分析 > 资产、负债情况分析,交易性金融资产,source_located_single_pass
+RET-195,芯导科技2025年末应收账款是多少元？,2025,balance_sheet_metric,simple,"25,943,313.16",docs/json_docs/MinerU_上海芯导电子科技股份有限公司财报_2025__20260411100646.json,39,第三节 管理层讨论与分析 > 资产、负债情况分析,应收账款,source_located_single_pass
+RET-196,芯导科技2025年末预付款项是多少元？,2025,balance_sheet_metric,simple,"4,757,572.04",docs/json_docs/MinerU_上海芯导电子科技股份有限公司财报_2025__20260411100646.json,39,第三节 管理层讨论与分析 > 资产、负债情况分析,预付款项,source_located_single_pass
+RET-197,芯导科技2025年末存货是多少元？,2025,balance_sheet_metric,simple,"46,601,550.73",docs/json_docs/MinerU_上海芯导电子科技股份有限公司财报_2025__20260411100646.json,39,第三节 管理层讨论与分析 > 资产、负债情况分析,存货,source_located_single_pass
+RET-198,芯导科技2025年末长期股权投资是多少元？,2025,balance_sheet_metric,simple,"52,482,788.67",docs/json_docs/MinerU_上海芯导电子科技股份有限公司财报_2025__20260411100646.json,39,第三节 管理层讨论与分析 > 资产、负债情况分析,长期股权投资,source_located_single_pass
+RET-199,芯导科技2025年末固定资产是多少元？,2025,balance_sheet_metric,simple,"127,585,336.10",docs/json_docs/MinerU_上海芯导电子科技股份有限公司财报_2025__20260411100646.json,39,第三节 管理层讨论与分析 > 资产、负债情况分析,固定资产,source_located_single_pass
+RET-200,芯导科技2025年末应付账款是多少元？,2025,balance_sheet_metric,simple,"39,307,672.60",docs/json_docs/MinerU_上海芯导电子科技股份有限公司财报_2025__20260411100646.json,39,第三节 管理层讨论与分析 > 资产、负债情况分析,应付账款,source_located_single_pass
