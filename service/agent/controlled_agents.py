@@ -90,6 +90,11 @@ class IntentClassificationSchema(BaseModel):
     reason: str = ""
 
 
+class IntentCandidateResolutionSchema(BaseModel):
+    intent_id: str
+    reason: str = ""
+
+
 class SlotFillSchema(BaseModel):
     years: List[str] = Field(default_factory=list)
     metric: str = ""
@@ -379,7 +384,10 @@ class QuestionUnderstandingAgent:
     ) -> Dict[str, Any]:
         del use_llm_intent_slot
         frame = (
-            self.hard_signal_extractor.extract(question)
+            self.hard_signal_extractor.extract(
+                question,
+                reference_date=(conversation_context or {}).get("reference_date"),
+            )
             if self.hard_signal_extractor is not None
             else {
                 "primary_action": "",
@@ -394,10 +402,10 @@ class QuestionUnderstandingAgent:
         )
         semantic_route: Dict[str, Any] = {
             "candidates": [],
-            "decision": "disabled",
-            "top_query_type": "",
-            "top_score": 0.0,
-            "margin": 0.0,
+            "route_status": "disabled",
+            "top_intent": "",
+            "top1_score": 0.0,
+            "score_margin": 0.0,
             "provider": "disabled",
         }
         if self.semantic_router is not None:
@@ -413,17 +421,20 @@ class QuestionUnderstandingAgent:
             except Exception as exc:
                 semantic_route = {
                     "candidates": [],
-                    "decision": "error",
-                    "top_query_type": "",
-                    "top_score": 0.0,
-                    "margin": 0.0,
+                    "route_status": "error",
+                    "top_intent": "",
+                    "top1_score": 0.0,
+                    "score_margin": 0.0,
                     "provider": "error",
                     "error_type": type(exc).__name__,
                 }
 
         query_type = query_type_from_frame(frame, semantic_route)
         if query_type != "ambiguous_query":
-            source = "hard_signal+embedding" if frame.get("primary_action") else "embedding"
+            route_status = _clean_str(
+                semantic_route.get("route_status") or semantic_route.get("decision")
+            )
+            source = "embedding" if route_status in {"accepted", "accept"} else "deterministic_fallback"
             return self._build_structured_result(
                 question=question,
                 query_type=query_type,
@@ -433,68 +444,116 @@ class QuestionUnderstandingAgent:
                 source=source,
                 reason="Built a multi-dimensional query frame, then selected the execution skill.",
             )
-        if frame.get("routing_state") == "ambiguous_action":
+
+        route_status = _clean_str(
+            semantic_route.get("route_status") or semantic_route.get("decision")
+        )
+        llm_fallback_enabled = bool(getattr(self.semantic_router, "llm_fallback_enabled", True))
+        if route_status == "ambiguous" and llm_fallback_enabled:
+            resolved_intent = await self._resolve_candidate_intent(
+                question,
+                semantic_route.get("candidates") or [],
+                conversation_context=conversation_context,
+                candidate_limit=int(
+                    getattr(self.semantic_router, "ambiguous_candidate_limit", 3)
+                ),
+            )
+            if resolved_intent:
+                resolved_frame = merge_structured_frame(
+                    frame,
+                    {
+                        "primary_action": QUERY_TYPE_TO_ACTION.get(resolved_intent, ""),
+                        "routing_state": "ready",
+                    },
+                )
+                resolved_frame["routing_state"] = "ready"
+                return self._build_structured_result(
+                    question=question,
+                    query_type=resolved_intent,
+                    frame=resolved_frame,
+                    semantic_route=semantic_route,
+                    skill_registry=skill_registry,
+                    source="llm_candidate_disambiguation",
+                    reason="Embedding candidates were close; LLM selected only from the bounded candidate list.",
+                )
+
+        if route_status == "unknown":
+            unknown_frame = merge_structured_frame(
+                frame,
+                {"routing_state": "unknown_intent"},
+            )
+            unknown_frame["routing_state"] = "unknown_intent"
             return self._build_structured_result(
                 question=question,
                 query_type="ambiguous_query",
-                frame=frame,
+                frame=unknown_frame,
                 semantic_route=semantic_route,
                 skill_registry=skill_registry,
-                source="single_intent_conflict",
-                reason="The request contains more than one strong action; clarification is required during the single-intent phase.",
+                source="embedding_unknown",
+                reason="All embedding candidates were below the configured minimum intent score.",
             )
 
-        llm_fallback_enabled = bool(getattr(self.semantic_router, "llm_fallback_enabled", True))
-        llm_result = None
-        if llm_fallback_enabled:
-            llm_result = await self._understand_with_llm(
-                question,
-                skill_registry,
-                conversation_context=conversation_context,
-                include_answer_requirements=True,
-            )
-        if llm_result is not None:
-            incoming_frame = llm_result.get("structured_frame")
-            if not isinstance(incoming_frame, Mapping):
-                parsed_query_type = str(llm_result.get("query_type") or "information_extraction")
-                incoming_frame = {
-                    "primary_action": QUERY_TYPE_TO_ACTION.get(parsed_query_type, ""),
-                    "domain_objects": [],
-                    "evidence_modes": [],
-                    "output_format": "answer",
-                    "requirements": llm_result.get("answer_requirements") or {},
-                    "slots": {},
-                    "routing_state": "ready",
-                }
-            merged_frame = merge_structured_frame(frame, incoming_frame)
-            return self._build_structured_result(
-                question=question,
-                query_type=str(llm_result.get("query_type") or "information_extraction"),
-                frame=merged_frame,
-                semantic_route=semantic_route,
-                skill_registry=skill_registry,
-                source="llm_disambiguation",
-                reason="Hard signals and embedding candidates were insufficient; used one schema-validated LLM disambiguation.",
-                incoming_slots=llm_result.get("slots") if isinstance(llm_result.get("slots"), Mapping) else None,
-            )
-
-        fallback_query_type = self.intent_agent._fallback_query_type(question)
-        fallback_frame = merge_structured_frame(
+        ambiguous_frame = merge_structured_frame(
             frame,
             {
-                "primary_action": QUERY_TYPE_TO_ACTION.get(fallback_query_type, ""),
-                "routing_state": "fallback",
+                "routing_state": (
+                    "ambiguous_intent"
+                    if route_status == "ambiguous"
+                    else frame.get("routing_state") or "needs_clarification"
+                ),
             },
+        )
+        ambiguous_frame["routing_state"] = (
+            "ambiguous_intent"
+            if route_status == "ambiguous"
+            else _clean_str(frame.get("routing_state")) or "needs_clarification"
         )
         return self._build_structured_result(
             question=question,
-            query_type=fallback_query_type,
-            frame=fallback_frame,
+            query_type="ambiguous_query",
+            frame=ambiguous_frame,
             semantic_route=semantic_route,
             skill_registry=skill_registry,
-            source="deterministic_fallback",
-            reason="Semantic routing and LLM disambiguation were unavailable; used the deterministic fallback.",
+            source="embedding_ambiguous",
+            reason="Embedding candidates remained ambiguous after bounded disambiguation.",
         )
+
+    async def _resolve_candidate_intent(
+        self,
+        question: str,
+        candidates: Sequence[Mapping[str, Any]],
+        conversation_context: Mapping[str, Any] | None = None,
+        candidate_limit: int = 3,
+    ) -> str:
+        limit = max(2, min(int(candidate_limit), 3))
+        allowed = [
+            _clean_str(item.get("query_type") or item.get("intent_id"))
+            for item in candidates[:limit]
+            if isinstance(item, Mapping)
+        ]
+        allowed = [item for item in allowed if item in QUERY_TYPE_SET and item != "ambiguous_query"]
+        if len(allowed) < 2:
+            return ""
+        parsed = await _safe_structured_json(
+            self.llm_service,
+            "Choose the best intent only from the supplied embedding candidates. "
+            "Do not invent another intent and do not extract slots.",
+            {
+                "question": question,
+                "candidate_intents": [
+                    dict(item)
+                    for item in candidates[:limit]
+                    if isinstance(item, Mapping)
+                    and _clean_str(item.get("query_type") or item.get("intent_id")) in allowed
+                ],
+                "conversation_context": dict(conversation_context or {}),
+                "allowed_intent_ids": allowed,
+            },
+            schema=IntentCandidateResolutionSchema,
+            max_tokens=240,
+        )
+        resolved = _clean_str((parsed or {}).get("intent_id"))
+        return resolved if resolved in allowed else ""
 
     def _build_structured_result(
         self,
@@ -519,6 +578,15 @@ class QuestionUnderstandingAgent:
         metrics = _clean_list(frame_slots.get("metrics"))
         compare_targets = _clean_list(frame_slots.get("compare_targets"))
         companies = _clean_list(frame_slots.get("companies"))
+        deterministic_list_slots = (
+            "quarters",
+            "half_years",
+            "report_types",
+            "statement_types",
+            "requested_pages",
+            "document_references",
+            "numeric_conditions",
+        )
         if years:
             slots["years"] = years
             slots["period"] = years[0] if len(years) == 1 else "、".join(years)
@@ -528,6 +596,14 @@ class QuestionUnderstandingAgent:
             slots["compare_targets"] = compare_targets
         if companies:
             slots["companies"] = companies
+        for key in deterministic_list_slots:
+            value = frame_slots.get(key)
+            if isinstance(value, list) and value:
+                slots[key] = list(value)
+        document_names = _clean_list(frame_slots.get("document_names"))
+        if document_names:
+            slots["document_name"] = document_names[0]
+            slots["document_names"] = document_names
         slots["domain_objects"] = _clean_list(frame.get("domain_objects"))
         slots["evidence_modes"] = _clean_list(frame.get("evidence_modes"))
         slots["output_format"] = _clean_str(frame.get("output_format")) or "answer"

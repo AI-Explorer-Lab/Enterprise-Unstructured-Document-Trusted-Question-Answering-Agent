@@ -16,6 +16,14 @@ from service.agent.clarify_gate import build_clarify_question
 from service.agent.conversation_context import ConversationContextService
 from service.agent.controlled_agents import IntentUnderstandingAgent, QuestionUnderstandingAgent, SlotFillingAgent
 from service.agent.evidence_gate import EvidenceDecisionEngine
+from service.agent.execution_context import update_execution_context
+from service.agent.llm_planner import (
+    LLMPlanner,
+    apply_validated_plan_to_execution_slots,
+    build_safe_fallback_plan,
+)
+from service.agent.plan_validator import PlanValidator
+from service.agent.planner_registry import DEFAULT_SCHEMA_REGISTRY, DEFAULT_TOOL_REGISTRY
 from service.agent.company_registry import get_company_registry
 from service.agent.query_expander import FIXED_QUERY_VARIANT_TOTAL, expand_queries
 from service.agent.query_planner import build_query_plan, is_decomposed_plan
@@ -271,6 +279,19 @@ class TrustedQAWorkflow:
             semantic_router=self.semantic_router,
             company_registry=self.company_registry,
         )
+        self.plan_validator = PlanValidator(
+            DEFAULT_SCHEMA_REGISTRY,
+            DEFAULT_TOOL_REGISTRY,
+            max_tasks=int(planner_cfg.get("max_tasks", 8)),
+        )
+        self.llm_planner = LLMPlanner(
+            self.llm_service,
+            DEFAULT_SCHEMA_REGISTRY,
+            DEFAULT_TOOL_REGISTRY,
+            self.plan_validator,
+            allow_one_repair=bool(planner_cfg.get("allow_one_repair", True)),
+        )
+        self.llm_planner_enabled = bool(planner_cfg.get("enabled", True))
         self.retriever = HybridRetriever(
             ParallelQueryExecutor(
                 repository=get_runtime_repository(),
@@ -500,19 +521,55 @@ class TrustedQAWorkflow:
         if not is_decomposed_plan(plan):
             return plan, query_type, slots, intent_trace
 
-        planned_query_type = str(plan.get("query_type") or query_type or "information_extraction")
         planned_slots = dict(slots or {})
         for key, value in dict(plan.get("slots") or {}).items():
             if not planned_slots.get(key):
                 planned_slots[key] = value
         planned_slots["query_plan"] = plan
         planned_intent = dict(intent_trace or {})
-        planned_intent.setdefault("semantic_query_type", str(intent_trace.get("query_type") or query_type))
-        planned_intent["execution_query_type"] = planned_query_type
-        planned_intent["query_type"] = planned_query_type
+        planned_intent["query_type"] = query_type
         planned_intent["planning_mode"] = "decomposed"
         planned_intent["query_plan"] = plan
-        return plan, planned_query_type, planned_slots, planned_intent
+        return plan, query_type, planned_slots, planned_intent
+
+    async def _build_validated_llm_plan(
+        self,
+        question: str,
+        query_type: str,
+        slots: Mapping[str, Any],
+        conversation_context: Mapping[str, Any] | None = None,
+    ) -> Dict[str, Any]:
+        if query_type == "ambiguous_query":
+            return {
+                "plan": {},
+                "validation": {
+                    "valid": False,
+                    "executable": False,
+                    "errors": ["intent routing is not accepted"],
+                    "missing_required_slots": ["primary_intent"],
+                },
+                "source": "not_planned",
+                "repair_attempted": False,
+            }
+        if not self.llm_planner_enabled:
+            plan = build_safe_fallback_plan(
+                query_type,
+                slots,
+                DEFAULT_SCHEMA_REGISTRY,
+                DEFAULT_TOOL_REGISTRY,
+            )
+            return {
+                "plan": plan,
+                "validation": self.plan_validator.validate(query_type, plan).as_dict(),
+                "source": "planner_disabled_safe_plan",
+                "repair_attempted": False,
+            }
+        return await self.llm_planner.plan(
+            question,
+            query_type,
+            extracted_slots=slots,
+            conversation_context=conversation_context or {},
+        )
 
     async def _resolve_retrieval_scope(
         self,
@@ -1289,8 +1346,21 @@ class TrustedQAWorkflow:
         collection_name: str,
         slots: Dict[str, Any],
         selected_skill: Any,
+        planner_result: Mapping[str, Any] | None = None,
     ) -> Dict[str, Any]:
         missing_slots = selected_skill.get_missing_slots(slots) if selected_skill is not None else []
+        planner_validation = (
+            planner_result.get("validation")
+            if isinstance(planner_result, Mapping)
+            and isinstance(planner_result.get("validation"), Mapping)
+            else {}
+        )
+        if planner_validation and not bool(planner_validation.get("valid", False)):
+            if "valid_plan" not in missing_slots:
+                missing_slots.append("valid_plan")
+        for slot in planner_validation.get("missing_required_slots") or []:
+            if slot not in missing_slots:
+                missing_slots.append(str(slot))
         if query_type == "ambiguous_query" and "primary_intent" not in missing_slots:
             missing_slots.append("primary_intent")
         if not str(collection_name or "").strip():
@@ -1424,9 +1494,26 @@ class TrustedQAWorkflow:
         _plan, query_type, slots, intent_trace = self._apply_query_plan(question, query_type, slots, intent_trace)
         selected_skill = self.skill_registry.select_skill(query_type)
         skill_package = selected_skill.package_metadata()
+        planner_started_at = time.perf_counter()
+        planner_result = await self._build_validated_llm_plan(
+            question,
+            query_type,
+            slots,
+            conversation_context=state.get("turn_route") or {},
+        )
+        slots = apply_validated_plan_to_execution_slots(slots, planner_result)
         observations = list(state.get("observations") or [])
         observations.append({"phase": "intent_slot_understanding_agent", "intent": intent_trace, "slots": slots, "duration_ms": intent_duration_ms})
         observations.append({"phase": "select_skill_from_registry", "selected_skill": selected_skill.skill_name, "skill_package": skill_package, "duration_ms": _duration_ms(skill_started_at)})
+        observations.append(
+            {
+                "phase": "llm_planner",
+                "source": planner_result.get("source"),
+                "validation": planner_result.get("validation"),
+                "repair_attempted": bool(planner_result.get("repair_attempted")),
+                "duration_ms": _duration_ms(planner_started_at),
+            }
+        )
         next_state = dict(state)
         next_state.update(
             {
@@ -1435,6 +1522,8 @@ class TrustedQAWorkflow:
                 "selected_skill": selected_skill,
                 "skill_package": skill_package,
                 "slots": slots,
+                "planner_result": planner_result,
+                "execution_context": update_execution_context(),
                 "observations": observations,
             }
         )
@@ -1453,7 +1542,13 @@ class TrustedQAWorkflow:
             slots=slots,
             conversation_state=state.get("conversation_state") or {},
         )
-        clarify = self._build_clarify_payload(query_type, collection_name, slots, selected_skill)
+        clarify = self._build_clarify_payload(
+            query_type,
+            collection_name,
+            slots,
+            selected_skill,
+            planner_result=state.get("planner_result") or {},
+        )
         clarify = self._apply_scope_clarify(clarify, scope, slots)
         scope_refuse_gate = self._scope_refuse_gate(scope) if scope.should_refuse and clarify.get("decision") != "clarify" else {}
         observations = list(state.get("observations") or [])
@@ -1530,6 +1625,20 @@ class TrustedQAWorkflow:
             metadata_filter=state.get("metadata_filter") or {},
         )
         evidence = list(retrieval_result.get("evidence") or [])
+        execution_context = update_execution_context(
+            state.get("execution_context") or {},
+            evidence=evidence,
+            tool_name="parallel_hybrid_retrieval",
+            tool_output={
+                "evidence_count": len(evidence),
+                "retrieval_trace": retrieval_result.get("retrieval_trace") or {},
+            },
+        )
+        execution_context = update_execution_context(
+            execution_context,
+            tool_name="two_stage_hybrid_rerank",
+            tool_output=retrieval_result.get("rerank_trace") or {},
+        )
         observations = list(state.get("observations") or [])
         observations.append({**retrieval_stage, "evidence_count": len(evidence)})
         next_state = dict(state)
@@ -1540,6 +1649,7 @@ class TrustedQAWorkflow:
                 "llm_expansion_used": llm_expansion_used,
                 "retrieval_result": retrieval_result,
                 "evidence": evidence,
+                "execution_context": execution_context,
                 "observations": observations,
             }
         )
@@ -1559,8 +1669,20 @@ class TrustedQAWorkflow:
         )
         observations = list(state.get("observations") or [])
         observations.append({"phase": "evidence_decision", "rule_gate": gate.get("rule_gate") or {}, "audit": gate.get("evidence_audit") or {}, "gate": gate, "duration_ms": _duration_ms(started_at)})
+        execution_context = update_execution_context(
+            state.get("execution_context") or {},
+            evidence=state.get("evidence") or [],
+            tool_name="evidence_gate",
+            tool_output={"decision": gate.get("decision"), "reason": gate.get("reason")},
+        )
         next_state = dict(state)
-        next_state.update({"gate": gate, "observations": observations})
+        next_state.update(
+            {
+                "gate": gate,
+                "execution_context": execution_context,
+                "observations": observations,
+            }
+        )
         return next_state
 
     def _graph_route_after_gate(self, state: Dict[str, Any]) -> str:
@@ -1598,6 +1720,27 @@ class TrustedQAWorkflow:
             retry_count=retry_count,
             table_evidence_quota=self.table_evidence_quota,
         )
+        execution_context = update_execution_context(
+            state.get("execution_context") or {},
+            evidence=evidence,
+            tool_name="parallel_hybrid_retrieval",
+            tool_output={
+                "retry_count": retry_count,
+                "evidence_count": len(evidence),
+                "retrieval_trace": retry_result.get("retrieval_trace") or {},
+            },
+        )
+        execution_context = update_execution_context(
+            execution_context,
+            tool_name="two_stage_hybrid_rerank",
+            tool_output=retry_result.get("rerank_trace") or {},
+        )
+        execution_context = update_execution_context(
+            execution_context,
+            evidence=evidence,
+            tool_name="evidence_gate",
+            tool_output={"decision": gate.get("decision"), "reason": gate.get("reason")},
+        )
         observations = list(state.get("observations") or [])
         observations.append({"phase": "retry_retrieval", "retry_count": retry_count, "retry_question": retry_question, "expanded_queries": retry_expanded, "planning_mode": retry_stage.get("planning_mode", ""), "audit": gate.get("evidence_audit") or {}, "rule_gate": gate.get("rule_gate") or {}, "gate": gate, "evidence_count": len(evidence), "duration_ms": _duration_ms(started_at)})
         next_state = dict(state)
@@ -1611,6 +1754,7 @@ class TrustedQAWorkflow:
                 "retrieval_result": retry_result,
                 "evidence": evidence,
                 "gate": gate,
+                "execution_context": execution_context,
                 "observations": observations,
             }
         )
@@ -1676,6 +1820,13 @@ class TrustedQAWorkflow:
                 llm_answer_used = not llm_answer_cache_hit
                 if not llm_answer_cache_hit and bool(state.get("enable_cache", True)):
                     self._store_answer_cache(answer_cache_key, llm_answer)
+        execution_context = update_execution_context(
+            state.get("execution_context") or {},
+            evidence=answer_payload.get("evidence") or [],
+            citations=answer_payload.get("citations") or [],
+            tool_name="answer_generator",
+            tool_output={"decision": decision},
+        )
         observations = list(state.get("observations") or [])
         observations.append(
             {
@@ -1705,6 +1856,7 @@ class TrustedQAWorkflow:
                 "gate": gate,
                 "llm_answer_used": llm_answer_used,
                 "llm_answer_cache_hit": llm_answer_cache_hit,
+                "execution_context": execution_context,
                 "observations": observations,
             }
         )
@@ -1736,6 +1888,8 @@ class TrustedQAWorkflow:
             conversation_state=state.get("conversation_state") or {},
             turn_route=state.get("turn_route") or {},
             workflow_duration_ms=_duration_ms(float(workflow_started_at)) if isinstance(workflow_started_at, (int, float)) else None,
+            planner_result=state.get("planner_result") or {},
+            execution_context=state.get("execution_context") or {},
         )
         await self._save(str(state.get("sid") or ""), str(state.get("original_question") or state.get("question") or ""), response)
         await self._update_conversation_focus(
@@ -1911,6 +2065,26 @@ class TrustedQAWorkflow:
         observations.append({"phase": "select_skill_from_registry", "selected_skill": selected_skill.skill_name, "skill_package": skill_package, "duration_ms": skill_duration_ms})
         await _emit_progress_stage(progress_callback, observations[-1])
 
+        planner_started_at = time.perf_counter()
+        await _emit_progress_marker(progress_callback, "llm_planner")
+        planner_result = await self._build_validated_llm_plan(
+            effective_question,
+            query_type,
+            slots,
+            conversation_context=turn_route,
+        )
+        slots = apply_validated_plan_to_execution_slots(slots, planner_result)
+        execution_context = update_execution_context()
+        planner_observation = {
+            "phase": "llm_planner",
+            "source": planner_result.get("source"),
+            "validation": planner_result.get("validation"),
+            "repair_attempted": bool(planner_result.get("repair_attempted")),
+            "duration_ms": _duration_ms(planner_started_at),
+        }
+        observations.append(planner_observation)
+        await _emit_progress_stage(progress_callback, planner_observation)
+
         clarify_started_at = time.perf_counter()
         await _emit_progress_marker(progress_callback, "clarify_gate")
         retrieval_scope = await self._resolve_retrieval_scope(
@@ -1921,7 +2095,13 @@ class TrustedQAWorkflow:
             conversation_state=conversation_state,
         )
         metadata_filter = retrieval_scope.metadata_filter()
-        clarify = self._build_clarify_payload(query_type, collection_name, slots, selected_skill)
+        clarify = self._build_clarify_payload(
+            query_type,
+            collection_name,
+            slots,
+            selected_skill,
+            planner_result=planner_result,
+        )
         clarify = self._apply_scope_clarify(clarify, retrieval_scope, slots)
         clarify_duration_ms = _duration_ms(clarify_started_at)
         observations.append(
@@ -1971,6 +2151,8 @@ class TrustedQAWorkflow:
                 conversation_state=conversation_state,
                 turn_route=turn_route,
                 workflow_duration_ms=_duration_ms(workflow_started_at),
+                planner_result=planner_result,
+                execution_context=execution_context,
             )
             await _emit_progress_marker(progress_callback, "finalize_response")
             await self._save(sid, original_question, response)
@@ -2040,6 +2222,8 @@ class TrustedQAWorkflow:
                 conversation_state=conversation_state,
                 turn_route=turn_route,
                 workflow_duration_ms=_duration_ms(workflow_started_at),
+                planner_result=planner_result,
+                execution_context=execution_context,
             )
             await _emit_progress_marker(progress_callback, "finalize_response")
             await self._save(sid, original_question, response)
@@ -2099,6 +2283,13 @@ class TrustedQAWorkflow:
             response["retrieval_trace"]["final_response_cache_hit"] = True
             response["retrieval_trace"]["cache_hit"] = True
             response["retrieval_trace"]["query_expansion_skipped"] = "final_response_cache_hit"
+            execution_context = update_execution_context(
+                execution_context,
+                evidence=response.get("evidence") or [],
+                citations=response.get("citations") or [],
+                tool_name="response_cache",
+                tool_output={"cache_hit": True},
+            )
             response = self._apply_response_traces(
                 response=response,
                 selected_skill=selected_skill,
@@ -2117,6 +2308,8 @@ class TrustedQAWorkflow:
                 conversation_state=conversation_state,
                 turn_route=turn_route,
                 workflow_duration_ms=_duration_ms(workflow_started_at),
+                planner_result=planner_result,
+                execution_context=execution_context,
             )
             await _emit_progress_marker(progress_callback, "finalize_response")
             await self._save(sid, original_question, response)
@@ -2144,6 +2337,20 @@ class TrustedQAWorkflow:
             metadata_filter=metadata_filter,
         )
         evidence = list(retrieval_result.get("evidence") or [])
+        execution_context = update_execution_context(
+            execution_context,
+            evidence=evidence,
+            tool_name="parallel_hybrid_retrieval",
+            tool_output={
+                "evidence_count": len(evidence),
+                "retrieval_trace": retrieval_result.get("retrieval_trace") or {},
+            },
+        )
+        execution_context = update_execution_context(
+            execution_context,
+            tool_name="two_stage_hybrid_rerank",
+            tool_output=retrieval_result.get("rerank_trace") or {},
+        )
         retrieval_observation = {**retrieval_stage, "evidence_count": len(evidence)}
         observations.append(retrieval_observation)
         await _emit_progress_stage(progress_callback, retrieval_observation)
@@ -2158,6 +2365,12 @@ class TrustedQAWorkflow:
             rerank_trace=retrieval_result.get("rerank_trace") or {},
             retry_count=0,
             table_evidence_quota=self.table_evidence_quota,
+        )
+        execution_context = update_execution_context(
+            execution_context,
+            evidence=evidence,
+            tool_name="evidence_gate",
+            tool_output={"decision": gate.get("decision"), "reason": gate.get("reason")},
         )
         evidence_observation = {"phase": "evidence_decision", "rule_gate": gate.get("rule_gate") or {}, "audit": gate.get("evidence_audit") or {}, "gate": gate, "duration_ms": _duration_ms(evidence_started_at)}
         observations.append(evidence_observation)
@@ -2192,6 +2405,27 @@ class TrustedQAWorkflow:
                 rerank_trace=retrieval_result.get("rerank_trace") or {},
                 retry_count=retry_count,
                 table_evidence_quota=self.table_evidence_quota,
+            )
+            execution_context = update_execution_context(
+                execution_context,
+                evidence=evidence,
+                tool_name="parallel_hybrid_retrieval",
+                tool_output={
+                    "retry_count": retry_count,
+                    "evidence_count": len(evidence),
+                    "retrieval_trace": retry_result.get("retrieval_trace") or {},
+                },
+            )
+            execution_context = update_execution_context(
+                execution_context,
+                tool_name="two_stage_hybrid_rerank",
+                tool_output=retry_result.get("rerank_trace") or {},
+            )
+            execution_context = update_execution_context(
+                execution_context,
+                evidence=evidence,
+                tool_name="evidence_gate",
+                tool_output={"decision": gate.get("decision"), "reason": gate.get("reason")},
             )
             retry_observation = {"phase": "retry_retrieval", "retry_count": retry_count, "retry_question": retry_question, "expanded_queries": retry_expanded, "llm_expanded": retry_llm_expanded, "planning_mode": retry_stage.get("planning_mode", ""), "audit": gate.get("evidence_audit") or {}, "rule_gate": gate.get("rule_gate") or {}, "gate": gate, "evidence_count": len(evidence), "duration_ms": _duration_ms(retry_started_at)}
             observations.append(retry_observation)
@@ -2246,6 +2480,13 @@ class TrustedQAWorkflow:
                 llm_answer_used = not llm_answer_cache_hit
                 if not llm_answer_cache_hit and enable_cache:
                     self._store_answer_cache(answer_cache_key, llm_answer)
+        execution_context = update_execution_context(
+            execution_context,
+            evidence=answer_payload.get("evidence") or [],
+            citations=answer_payload.get("citations") or [],
+            tool_name="answer_generator",
+            tool_output={"decision": decision},
+        )
         answer_observation = {
             "phase": "answer_generation",
             "duration_ms": _duration_ms(answer_started_at),
@@ -2284,6 +2525,8 @@ class TrustedQAWorkflow:
             conversation_state=conversation_state,
             turn_route=turn_route,
             workflow_duration_ms=_duration_ms(workflow_started_at),
+            planner_result=planner_result,
+            execution_context=execution_context,
         )
         if enable_cache and decision == "answer":
             self._store_response_cache(response_cache_key, response)
@@ -2357,6 +2600,8 @@ class TrustedQAWorkflow:
         conversation_state: Dict[str, Any] | None = None,
         turn_route: Dict[str, Any] | None = None,
         workflow_duration_ms: int | None = None,
+        planner_result: Mapping[str, Any] | None = None,
+        execution_context: Mapping[str, Any] | None = None,
     ) -> Dict[str, Any]:
         trace_metadata = getattr(self.llm_service, "trace_metadata", None)
         llm_trace = trace_metadata() if callable(trace_metadata) else {}
@@ -2402,10 +2647,14 @@ class TrustedQAWorkflow:
         response["skill_trace"]["intent_trace"] = intent_trace
         response["skill_trace"]["slots"] = slots
         response["skill_trace"]["turn_routing"] = response["retrieval_trace"]["turn_routing"]
+        response["skill_trace"]["planner"] = dict(planner_result or {})
+        response["skill_trace"]["execution_context"] = dict(execution_context or {})
         response["retrieval_trace"]["tool_chain"] = response["skill_trace"]["tool_chain"]
         response["retrieval_trace"]["skill_package"] = skill_package
         response["retrieval_trace"]["intent_trace"] = intent_trace
         response["retrieval_trace"]["slots"] = slots
+        response["retrieval_trace"]["planner"] = dict(planner_result or {})
+        response["retrieval_trace"]["execution_context"] = dict(execution_context or {})
         if isinstance(slots.get("retrieval_scope"), dict):
             response["retrieval_trace"]["retrieval_scope"] = slots.get("retrieval_scope")
         if isinstance(slots.get("metadata_filter"), dict):

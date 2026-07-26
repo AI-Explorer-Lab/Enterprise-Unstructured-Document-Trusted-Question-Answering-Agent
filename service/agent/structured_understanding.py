@@ -4,10 +4,13 @@ import asyncio
 import math
 import re
 from dataclasses import dataclass
+from datetime import date, datetime
 from pathlib import Path
 from typing import Any, Dict, Iterable, List, Mapping, Sequence
 
 from service.agent.company_registry import CompanyProfile, CompanyRegistry
+from service.agent.deterministic_slots import extract_deterministic_slots
+from service.agent.schemas import IntentRoutingResult
 from utils.config_loader import PROJECT_ROOT, load_yaml_file
 from utils.content_normalizer import normalize_whitespace
 
@@ -61,11 +64,18 @@ METRIC_ALIASES: Dict[str, tuple[str, ...]] = {
     "营业成本": ("营业成本",),
     "净利润": ("净利润",),
     "归母净利润": ("归母净利润", "归属于上市公司股东的净利润"),
+    "扣除非经常性损益后的净利润": ("扣非净利润", "扣除非经常性损益后的净利润"),
     "经营活动产生的现金流量净额": ("经营活动产生的现金流量净额", "经营现金流", "经营活动现金流"),
     "毛利率": ("毛利率",),
     "研发投入": ("研发投入", "研发费用"),
     "货币资金": ("货币资金",),
     "应收账款": ("应收账款",),
+    "资产总额": ("资产总额", "总资产"),
+    "负债合计": ("负债合计", "总负债"),
+    "资产负债率": ("资产负债率",),
+    "流动比率": ("流动比率",),
+    "速动比率": ("速动比率",),
+    "净资产收益率": ("净资产收益率", "ROE"),
     "基本每股收益": ("基本每股收益", "每股收益"),
 }
 
@@ -195,10 +205,25 @@ class HardSignalExtractor:
     def __init__(self, company_registry: CompanyRegistry) -> None:
         self.company_registry = company_registry
 
-    def extract(self, question: str) -> Dict[str, Any]:
+    def extract(
+        self,
+        question: str,
+        *,
+        reference_date: date | datetime | str | None = None,
+    ) -> Dict[str, Any]:
         text = _clean(question)
         lowered = text.lower()
         evidence: List[Dict[str, Any]] = []
+        deterministic = extract_deterministic_slots(
+            text,
+            reference_date=reference_date,
+        )
+        deterministic_slots = (
+            deterministic.get("slots")
+            if isinstance(deterministic.get("slots"), Mapping)
+            else {}
+        )
+        evidence.extend(list(deterministic.get("field_evidence") or []))
 
         matched_actions: List[tuple[str, str, int]] = []
         for action, terms in ACTION_TERMS.items():
@@ -249,9 +274,7 @@ class HardSignalExtractor:
             source = next((name for name in [company, *self._company_aliases(company)] if name and name in text), company)
             evidence.append(_field_evidence("companies", company, source, text, "company_registry_or_entity_pattern"))
 
-        periods = _unique(_YEAR_RE.findall(text))
-        for period in periods:
-            evidence.append(_field_evidence("periods", period, period, text, "year_pattern"))
+        periods = _unique(deterministic_slots.get("periods") or _YEAR_RE.findall(text))
         if primary_action == "compare" and len(compare_targets) < 2:
             if len(companies) >= 2:
                 compare_targets = list(companies)
@@ -260,12 +283,21 @@ class HardSignalExtractor:
             elif len(_unique(metrics)) >= 2:
                 compare_targets = _unique(metrics)
 
+        deterministic_requirements = (
+            deterministic.get("requirements")
+            if isinstance(deterministic.get("requirements"), Mapping)
+            else {}
+        )
+        need_location = bool(deterministic_requirements.get("need_location"))
         need_citation = next((term for term in CITATION_REQUIREMENT_TERMS if term.lower() in lowered), "")
         if not need_citation:
             citation_match = re.search(r"(?:给出|提供|注明|附上|给我).{0,3}(?:出处|来源|页码|依据)", text)
             need_citation = citation_match.group(0) if citation_match else ""
         if need_citation:
             evidence.append(_field_evidence("requirements.need_citation", True, need_citation, text, "requirement_dictionary"))
+        need_citation_flag = bool(need_citation) or bool(
+            deterministic_requirements.get("need_citation")
+        )
 
         report_term = next((term for term in REPORT_TERMS if term in text), "")
         short_term = next((term for term in SHORT_TERMS if term in text), "")
@@ -282,7 +314,7 @@ class HardSignalExtractor:
         evidence_modes: List[str] = []
         if metrics or domain_objects:
             evidence_modes.append("table")
-        if need_citation:
+        if need_citation_flag:
             evidence_modes.append("source")
 
         if not primary_action and not has_action_conflict and (metrics or domain_objects):
@@ -294,8 +326,9 @@ class HardSignalExtractor:
             "evidence_modes": evidence_modes,
             "output_format": output_format,
             "requirements": {
-                "need_citation": bool(need_citation),
-                "citation_mode": "source_for_answer" if need_citation else "",
+                "need_citation": need_citation_flag,
+                "need_location": need_location,
+                "citation_mode": "source_for_answer" if need_citation_flag else "",
                 "length": "short" if short_term else "normal",
             },
             "slots": {
@@ -303,9 +336,22 @@ class HardSignalExtractor:
                 "periods": periods,
                 "metrics": _unique(metrics),
                 "compare_targets": compare_targets,
+                "quarters": list(deterministic_slots.get("quarters") or []),
+                "half_years": list(deterministic_slots.get("half_years") or []),
+                "report_types": list(deterministic_slots.get("report_types") or []),
+                "statement_types": list(deterministic_slots.get("statement_types") or []),
+                "requested_pages": list(deterministic_slots.get("requested_pages") or []),
+                "document_references": list(
+                    deterministic_slots.get("document_references") or []
+                ),
+                "document_names": list(deterministic_slots.get("document_names") or []),
+                "numeric_conditions": list(
+                    deterministic_slots.get("numeric_conditions") or []
+                ),
             },
             "routing_state": "ambiguous_action" if has_action_conflict else ("ready" if primary_action else "needs_semantic_route"),
             "field_evidence": evidence,
+            "reference_date": deterministic.get("reference_date"),
         }
 
     def _company_aliases(self, company_name: str) -> List[str]:
@@ -337,21 +383,56 @@ def _cosine_similarity(left: Sequence[float], right: Sequence[float]) -> float:
 @dataclass(frozen=True)
 class SemanticRoute:
     candidates: tuple[Dict[str, Any], ...]
-    decision: str
-    top_query_type: str
-    top_score: float
-    margin: float
+    route_status: str
+    top_intent: str
+    top1_score: float
+    score_margin: float
     provider: str
 
+    @property
+    def decision(self) -> str:
+        return self.route_status
+
+    @property
+    def top_query_type(self) -> str:
+        return self.top_intent
+
+    @property
+    def top_score(self) -> float:
+        return self.top1_score
+
+    @property
+    def margin(self) -> float:
+        return self.score_margin
+
     def as_dict(self) -> Dict[str, Any]:
-        return {
-            "candidates": [dict(item) for item in self.candidates],
-            "decision": self.decision,
-            "top_query_type": self.top_query_type,
-            "top_score": self.top_score,
-            "margin": self.margin,
-            "provider": self.provider,
-        }
+        canonical = IntentRoutingResult(
+            candidates=[
+                {
+                    "intent_id": str(item.get("intent_id") or item.get("query_type") or ""),
+                    "score": float(item.get("score") or 0.0),
+                    "matched_prototype_count": int(item.get("matched_prototype_count") or 0),
+                }
+                for item in self.candidates
+            ],
+            route_status=self.route_status,
+            top_intent=self.top_intent or None,
+            top1_score=self.top1_score,
+            score_margin=self.score_margin,
+            provider=self.provider,
+        ).model_dump()
+        for item in canonical["candidates"]:
+            item["query_type"] = item["intent_id"]
+        canonical.update(
+            {
+                # Compatibility aliases for existing trace consumers.
+                "decision": self.route_status,
+                "top_query_type": self.top_intent,
+                "top_score": self.top1_score,
+                "margin": self.score_margin,
+            }
+        )
+        return canonical
 
 
 class SemanticSkillRouter:
@@ -361,9 +442,17 @@ class SemanticSkillRouter:
         self.enabled = bool(self.config.get("enabled", True))
         self.top_k = max(1, int(self.config.get("top_k", 3)))
         self.prototype_score_top_n = max(1, int(self.config.get("prototype_score_top_n", 3)))
-        self.accept_threshold = float(self.config.get("accept_threshold", 0.58))
-        self.reject_threshold = float(self.config.get("reject_threshold", 0.32))
-        self.margin_threshold = float(self.config.get("margin_threshold", 0.08))
+        self.min_intent_score = float(
+            self.config.get("min_intent_score", self.config.get("accept_threshold", 0.72))
+        )
+        self.min_score_margin = float(
+            self.config.get("min_score_margin", self.config.get("margin_threshold", 0.08))
+        )
+        self.ambiguous_candidate_limit = max(
+            2,
+            int(self.config.get("ambiguous_candidate_limit", self.top_k)),
+        )
+        self.unknown_strategy = str(self.config.get("unknown_strategy") or "clarify")
         self.llm_fallback_enabled = bool(self.config.get("llm_fallback_enabled", True))
         raw_prototypes = self.config.get("prototypes") if isinstance(self.config.get("prototypes"), Mapping) else {}
         self.prototype_texts = {
@@ -417,18 +506,18 @@ class SemanticSkillRouter:
         second_score = float(scored[1]["score"]) if len(scored) > 1 else 0.0
         top_score = float(top["score"])
         margin = round(top_score - second_score, 6)
-        if top_score < self.reject_threshold:
-            decision = "no_match"
-        elif top_score >= self.accept_threshold and margin >= self.margin_threshold:
-            decision = "accept"
+        if top_score < self.min_intent_score:
+            route_status = "unknown"
+        elif margin < self.min_score_margin:
+            route_status = "ambiguous"
         else:
-            decision = "ambiguous"
+            route_status = "accepted"
         return SemanticRoute(
             candidates=tuple(scored[: self.top_k]),
-            decision=decision,
-            top_query_type=str(top["query_type"]),
-            top_score=round(top_score, 6),
-            margin=margin,
+            route_status=route_status,
+            top_intent=str(top["query_type"]) if route_status != "unknown" else "",
+            top1_score=round(top_score, 6),
+            score_margin=margin,
             provider=str(getattr(self.embedding_service, "provider_name", "unknown")),
         )
 
@@ -446,6 +535,7 @@ class SemanticSkillRouter:
         nearest = similarities[:neighbor_count]
         score = sum(nearest) / neighbor_count if neighbor_count else 0.0
         return {
+            "intent_id": query_type,
             "query_type": query_type,
             "score": round(score, 6),
             "matched_prototype_count": neighbor_count,
@@ -453,14 +543,19 @@ class SemanticSkillRouter:
 
 
 def query_type_from_frame(frame: Mapping[str, Any], semantic_route: Mapping[str, Any] | None = None) -> str:
-    if _clean(frame.get("routing_state")) == "ambiguous_action":
-        return "ambiguous_query"
-    action = _clean(frame.get("primary_action"))
-    if action in ACTION_TO_QUERY_TYPE:
-        return ACTION_TO_QUERY_TYPE[action]
     route = semantic_route or {}
-    if route.get("decision") == "accept" and route.get("top_query_type"):
-        return str(route["top_query_type"])
+    route_status = _clean(route.get("route_status") or route.get("decision"))
+    top_intent = _clean(route.get("top_intent") or route.get("top_query_type"))
+    if route_status in {"accepted", "accept"} and top_intent:
+        return top_intent
+    if route_status in {"ambiguous", "unknown", "no_match"}:
+        return "ambiguous_query"
+    # Only use deterministic action routing when the embedding service is
+    # disabled or unavailable; production routing is embedding-first.
+    if route_status in {"", "disabled", "error"}:
+        action = _clean(frame.get("primary_action"))
+        if action in ACTION_TO_QUERY_TYPE:
+            return ACTION_TO_QUERY_TYPE[action]
     return "ambiguous_query"
 
 
@@ -474,6 +569,7 @@ def merge_structured_frame(base: Mapping[str, Any], incoming: Mapping[str, Any] 
         "slots": dict(base.get("slots") or {}) if isinstance(base.get("slots"), Mapping) else {},
         "routing_state": _clean(base.get("routing_state")) or "needs_semantic_route",
         "field_evidence": list(base.get("field_evidence") or []),
+        "reference_date": _clean(base.get("reference_date")),
     }
     if not isinstance(incoming, Mapping):
         return result
@@ -497,4 +593,9 @@ def merge_structured_frame(base: Mapping[str, Any], incoming: Mapping[str, Any] 
                 result["slots"][key] = value
     if incoming.get("routing_state") and result["routing_state"] == "needs_semantic_route":
         result["routing_state"] = _clean(incoming.get("routing_state"))
+    for item in list(incoming.get("field_evidence") or []):
+        if isinstance(item, Mapping) and dict(item) not in result["field_evidence"]:
+            result["field_evidence"].append(dict(item))
+    if not result["reference_date"] and incoming.get("reference_date"):
+        result["reference_date"] = _clean(incoming.get("reference_date"))
     return result

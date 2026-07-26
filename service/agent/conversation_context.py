@@ -255,6 +255,7 @@ class ConversationContextService:
         return {
             "current_question": _clean_str(current_question),
             "collection_name": _clean_str(collection_name) or _clean_str(session.get("collection_name")) or "default",
+            "reference_date": datetime.now().astimezone().date().isoformat(),
             "recent_history": turns,
             "latest_clarification_pending": latest_clarification_pending,
             "conversation_focus": conversation_focus or None,
@@ -400,6 +401,7 @@ class ConversationContextService:
                 "reason": "No conversation history; skipped LLM turn routing.",
                 "requires_clarification": False,
                 "policy_reason": "new_session_fast_path",
+                "reference_date": state.get("reference_date"),
             }
             return {
                 "conversation_state": state,
@@ -409,6 +411,7 @@ class ConversationContextService:
             }
         route = await self.route_turn(state)
         policy_route = self.apply_policy(state, route)
+        policy_route["reference_date"] = state.get("reference_date")
         return {
             "conversation_state": state,
             "turn_route": policy_route,

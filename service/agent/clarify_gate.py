@@ -105,12 +105,16 @@ def find_missing_slots(slots: Dict[str, Any], required_slots: List[str]) -> List
 
 
 def build_clarify_question(query_type: str, missing_slots: List[str]) -> str:
+    if "valid_plan" in missing_slots:
+        return "当前请求未能生成通过安全校验的执行计划，请缩小查询范围或改写问题后重试。"
     slot_map = {
         "metric": "你关注的指标",
         "period": "时间范围（例如 2025 年或 Q1）",
         "target_statement": "要定位的原文句子或主题",
         "compare_targets": "至少两个要对比的文档或对象",
         "scope": "文档范围或主题",
+        "analysis_topic": "要分析的指标、事项或主题",
+        "summary_scope": "要总结的文档、章节或主题范围",
         "primary_intent": "一个明确的主要任务（提取、计算、比较、分析或总结）",
     }
     missing_labels = [slot_map.get(slot, slot) for slot in missing_slots]

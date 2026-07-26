@@ -1,5 +1,10 @@
 ﻿from __future__ import annotations
 
+from typing import List, Literal
+
+from pydantic import BaseModel, Field
+
+
 PRIMARY_INTENT_TYPES = (
     "information_extraction",
     "metric_calculation",
@@ -25,6 +30,21 @@ LEGACY_QUERY_TYPE_ALIASES = {
 }
 
 FINAL_DECISIONS = {"answer", "clarify", "refuse"}
+
+
+class IntentCandidate(BaseModel):
+    intent_id: str
+    score: float
+    matched_prototype_count: int = 0
+
+
+class IntentRoutingResult(BaseModel):
+    top_intent: str | None = None
+    candidates: List[IntentCandidate] = Field(default_factory=list)
+    top1_score: float = 0.0
+    score_margin: float = 0.0
+    route_status: Literal["accepted", "ambiguous", "unknown", "disabled", "error"]
+    provider: str = "unknown"
 
 
 def normalize_query_type(query_type: str | None) -> str:

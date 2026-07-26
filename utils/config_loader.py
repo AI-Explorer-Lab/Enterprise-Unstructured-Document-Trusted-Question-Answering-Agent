@@ -44,6 +44,11 @@ DEFAULT_CONFIG: dict[str, Any] = {
         "default_skill": "information_extraction",
         "use_llm_intent_slot": False,
     },
+    "planner": {
+        "enabled": True,
+        "max_tasks": 8,
+        "allow_one_repair": True,
+    },
     "skills": {
         "enabled": [
             "information_extraction",

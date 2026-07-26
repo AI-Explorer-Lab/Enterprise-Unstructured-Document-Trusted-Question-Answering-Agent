@@ -51,11 +51,28 @@ def build_query_terms(question: str, slots: Mapping[str, Any] | None = None) -> 
 
     slot_values = slots or {}
     parts = [_clean_text(question)]
-    for key in ("metric", "period", "target_statement", "scope", "table_name", "unit", "focus"):
+    for key in (
+        "metric",
+        "period",
+        "target_statement",
+        "scope",
+        "table_name",
+        "unit",
+        "focus",
+        "document_name",
+    ):
         value = slot_values.get(key)
         if value:
             parts.append(_clean_text(value))
-    for key in ("years", "compare_targets"):
+    for key in (
+        "years",
+        "compare_targets",
+        "quarters",
+        "half_years",
+        "report_types",
+        "statement_types",
+        "document_references",
+    ):
         values = slot_values.get(key)
         if isinstance(values, Sequence) and not isinstance(values, (str, bytes)):
             parts.extend(_clean_text(item) for item in values if item)
@@ -214,4 +231,3 @@ def build_audit_evidence_brief(
             }
         )
     return brief
-

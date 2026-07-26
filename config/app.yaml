@@ -104,6 +104,10 @@ agent:
   skill_trace_enabled: true
   default_skill: information_extraction
   use_llm_intent_slot: false
+planner:
+  enabled: true
+  max_tasks: 8
+  allow_one_repair: true
 skills:
   enabled:
     - information_extraction
