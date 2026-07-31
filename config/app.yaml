@@ -103,6 +103,10 @@ agent:
   max_iterations: 6
   skill_trace_enabled: true
   default_skill: information_extraction
+workflow:
+  runner: agno
+agno:
+  telemetry: false
 planner:
   enabled: true
   max_tasks: 8

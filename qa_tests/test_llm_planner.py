@@ -198,6 +198,19 @@ def test_validator_rejects_wrong_tool_unknown_dependency_and_cycle() -> None:
     assert any("cyclic" in error for error in result.errors)
 
 
+def test_validator_rejects_a_plan_that_reorders_mandatory_business_gates() -> None:
+    plan = _comparison_plan()
+    plan["tasks"][2]["depends_on"] = []
+
+    result = _validator().validate("comparison", plan)
+
+    assert result.valid is False
+    assert any(
+        "evidence_gate must depend on two_stage_hybrid_rerank" in error
+        for error in result.errors
+    )
+
+
 def test_validator_rejects_execution_slots_in_planner_arguments() -> None:
     plan = _comparison_plan()
     plan["tasks"][0]["arguments"] = {"document_id": "invented-doc"}
