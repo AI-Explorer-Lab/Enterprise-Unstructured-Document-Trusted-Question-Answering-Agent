@@ -119,7 +119,9 @@ def build_clarify_question(query_type: str, missing_slots: List[str]) -> str:
     }
     missing_labels = [slot_map.get(slot, slot) for slot in missing_slots]
     if query_type == "ambiguous_query":
-        return "问题信息不够完整，请补充文档范围、时间或指标后我再继续。"
+        if "primary_intent" in missing_slots:
+            return "请明确你希望提取数据、概述内容，还是分析变化原因或风险。"
+        return "为了继续处理，请补充：" + "、".join(missing_labels or ["具体查询目标"]) + "。"
     return "为了给出可信答案，请补充：" + "、".join(missing_labels) + "。"
 
 

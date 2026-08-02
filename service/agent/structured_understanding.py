@@ -98,7 +98,7 @@ _YEAR_RE = re.compile(r"(?:19|20)\d{2}")
 _COMPARE_CONNECTOR_RE = re.compile(r"\s*(?:和|与|及|跟|同|vs\.?|versus)\s*", re.IGNORECASE)
 _CLAUSE_END_RE = re.compile(r"[，,。；;]|(?:并且|并给出|最后|同时|另外)")
 _LEADING_REQUEST_RE = re.compile(
-    r"^(?:请|帮我|麻烦|想要|我要|请帮我|请你)?(?:对比|比较|分析|查询|查一下|看看)?(?:一下|下)?"
+    r"^(?:请告诉我|告诉我|请|帮我|麻烦|想要|我要|请帮我|请你)?(?:对比|比较|分析|查询|查一下|看看)?(?:一下|下)?"
 )
 _TRAILING_REQUEST_RE = re.compile(
     r"(?:的)?(?:营业收入|营收|收入规模|营业成本|归母净利润|净利润|毛利率|研发投入|研发费用|"
@@ -194,7 +194,8 @@ def _looks_like_company(value: str, registry: CompanyRegistry) -> bool:
 
 
 def _company_mentions(question: str, registry: CompanyRegistry, compare_targets: Sequence[str]) -> List[str]:
-    companies = [profile.company_name for profile in registry.match_all(question)]
+    known_profiles = registry.match_all(question)
+    companies = [profile.company_name for profile in known_profiles]
     for target in compare_targets:
         if _looks_like_company(target, registry):
             known = registry.resolve_known(company_name=target)
@@ -204,6 +205,20 @@ def _company_mentions(question: str, registry: CompanyRegistry, compare_targets:
         if _COMPARE_CONNECTOR_RE.search(candidate):
             continue
         if _looks_like_company(candidate, registry):
+            overlapping_known = next(
+                (
+                    profile
+                    for profile in known_profiles
+                    if any(
+                        name and name in candidate
+                        for name in [profile.company_name, *profile.aliases, profile.company_id]
+                    )
+                ),
+                None,
+            )
+            if overlapping_known is not None:
+                companies.append(overlapping_known.company_name)
+                continue
             known = registry.resolve_known(company_name=candidate)
             companies.append(known.company_name if known is not None else candidate)
     return _unique(companies)
@@ -276,14 +291,20 @@ class HardSignalExtractor:
                     evidence.append(_field_evidence("domain_objects", canonical, alias, text, "domain_glossary"))
                     break
 
-        compare_targets = _compare_targets(text) if primary_action == "compare" else []
-        companies = _company_mentions(text, self.company_registry, compare_targets)
+        periods = _unique(deterministic_slots.get("periods") or _YEAR_RE.findall(text))
+        raw_compare_targets = _compare_targets(text) if primary_action == "compare" else []
+        # A connector between two explicit years describes a period comparison,
+        # not two company names. Feeding those fragments into the permissive
+        # company recognizer can turn domain wording such as
+        # "三张财务报表的变化" into a fake company.
+        company_compare_targets = raw_compare_targets if len(periods) < 2 else []
+        companies = _company_mentions(text, self.company_registry, company_compare_targets)
         for company in companies:
             source = next((name for name in [company, *self._company_aliases(company)] if name and name in text), company)
             evidence.append(_field_evidence("companies", company, source, text, "company_registry_or_entity_pattern"))
 
-        periods = _unique(deterministic_slots.get("periods") or _YEAR_RE.findall(text))
-        if primary_action == "compare" and len(compare_targets) < 2:
+        compare_targets = raw_compare_targets
+        if primary_action == "compare":
             if len(companies) >= 2:
                 compare_targets = list(companies)
             elif len(periods) >= 2:

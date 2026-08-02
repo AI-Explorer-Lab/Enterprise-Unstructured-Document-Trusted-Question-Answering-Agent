@@ -23,16 +23,31 @@ class TransformersCrossEncoderScorer:
         self._torch = None
         self._device = "cpu"
         self._cuda_available = False
+        self._mps_available = False
 
     def _resolve_device(self, torch: Any) -> str:
         self._cuda_available = bool(torch.cuda.is_available())
+        mps_backend = getattr(getattr(torch, "backends", None), "mps", None)
+        mps_is_available = getattr(mps_backend, "is_available", None)
+        self._mps_available = bool(
+            callable(mps_is_available) and mps_is_available()
+        )
         requested = self.requested_device
         if requested in {"", "auto"}:
-            return "cuda" if self._cuda_available else "cpu"
+            if self._cuda_available:
+                return "cuda"
+            if self._mps_available:
+                return "mps"
+            return "cpu"
         if requested.startswith("cuda") and not self._cuda_available:
             raise RuntimeError(
                 f"Requested cross_encoder_device={requested}, but torch.cuda.is_available() is false. "
                 "Install a CUDA-enabled PyTorch build in the backend conda environment or set cross_encoder_device=cpu."
+            )
+        if requested == "mps" and not self._mps_available:
+            raise RuntimeError(
+                "Requested cross_encoder_device=mps, but torch.backends.mps.is_available() is false. "
+                "Use an Apple Silicon PyTorch build with MPS support or set cross_encoder_device=cpu."
             )
         return requested
 
@@ -105,6 +120,7 @@ class TransformersCrossEncoderScorer:
                 "requested_device": self.requested_device,
                 "device": self._device,
                 "cuda_available": self._cuda_available,
+                "mps_available": self._mps_available,
             }
         except Exception as exc:
             self.last_error = f"{type(exc).__name__}: {exc}"[:500]

@@ -9,12 +9,13 @@ import copy
 from typing import Any, Awaitable, Callable, Dict, List, Mapping, Sequence
 from uuid import uuid4
 
-from service.agent.agno_planner_executor import AgnoPlannerExecutor
+from service.agent.agno_planner_executor import AgnoPlannerExecutor, AgnoStructuredPlanner
 from service.agent.agno_stream_workflow import AgnoStreamWorkflow
 from service.agent.answer_generator import AnswerGenerator
 from service.agent.clarify_gate import build_clarify_question
 from service.agent.conversation_context import ConversationContextService
 from service.agent.controlled_agents import IntentUnderstandingAgent, QuestionUnderstandingAgent, SlotFillingAgent
+from service.agent.domain_decomposition_planner import DomainDecompositionPlanner
 from service.agent.evidence_gate import EvidenceDecisionEngine
 from service.agent.execution_context import update_execution_context
 from service.agent.llm_planner import apply_validated_plan_to_execution_slots, build_safe_fallback_plan
@@ -208,6 +209,11 @@ class TrustedQAWorkflow:
             DEFAULT_SCHEMA_REGISTRY,
             DEFAULT_TOOL_REGISTRY,
             self.plan_validator,
+            allow_one_repair=bool(planner_cfg.get("allow_one_repair", True)),
+        )
+        self.domain_planner = DomainDecompositionPlanner(
+            AgnoStructuredPlanner(self.llm_service),
+            max_subtasks=self.query_plan_max_subtasks,
             allow_one_repair=bool(planner_cfg.get("allow_one_repair", True)),
         )
         self.llm_planner_enabled = bool(planner_cfg.get("enabled", True))
@@ -431,26 +437,52 @@ class TrustedQAWorkflow:
         expanded = _fixed_query_variants(question, query_type, llm_expanded)
         return expanded, llm_expanded, bool(llm_expanded)
 
-    def _apply_query_plan(
+    async def _apply_query_plan(
         self,
         question: str,
         query_type: str,
         slots: Dict[str, Any],
         intent_trace: Dict[str, Any],
     ) -> tuple[Dict[str, Any], str, Dict[str, Any], Dict[str, Any]]:
-        plan = build_query_plan(question, query_type)
+        domain_result = await self.domain_planner.plan(question, query_type)
+        plan = (
+            dict(domain_result.get("plan") or {})
+            if isinstance(domain_result, Mapping)
+            else build_query_plan(question, query_type)
+        )
         if not is_decomposed_plan(plan):
             return plan, query_type, slots, intent_trace
+
+        intent_decision = str(
+            intent_trace.get("intent_decision") or slots.get("intent_decision") or ""
+        ).strip().lower()
+        effective_query_type = str(plan.get("query_type") or query_type).strip()
+        if intent_decision == "reject":
+            return plan, query_type, slots, intent_trace
+        if effective_query_type and effective_query_type != "ambiguous_query":
+            query_type = effective_query_type
 
         planned_slots = dict(slots or {})
         for key, value in dict(plan.get("slots") or {}).items():
             if not planned_slots.get(key):
                 planned_slots[key] = value
         planned_slots["query_plan"] = plan
+        if intent_decision == "clarify" and query_type != "ambiguous_query":
+            planned_slots["original_intent_decision"] = "clarify"
+            planned_slots["intent_decision"] = "select"
         planned_intent = dict(intent_trace or {})
         planned_intent["query_type"] = query_type
         planned_intent["planning_mode"] = "decomposed"
         planned_intent["query_plan"] = plan
+        planned_intent["domain_planner"] = {
+            "source": domain_result.get("source") if isinstance(domain_result, Mapping) else "",
+            "validation": domain_result.get("validation") if isinstance(domain_result, Mapping) else {},
+            "repair_attempted": bool(domain_result.get("repair_attempted")) if isinstance(domain_result, Mapping) else False,
+        }
+        if intent_decision == "clarify" and query_type != "ambiguous_query":
+            planned_intent["original_intent_decision"] = "clarify"
+            planned_intent["intent_decision"] = "select"
+            planned_intent["intent_override_reason"] = "validated_domain_decomposition"
         return plan, query_type, planned_slots, planned_intent
 
     async def _build_validated_llm_plan(
@@ -1160,11 +1192,16 @@ class TrustedQAWorkflow:
         expand_query_num: int,
         enable_cache: bool,
         metadata_filter: Mapping[str, Any] | None = None,
+        query_plan: Mapping[str, Any] | None = None,
     ) -> tuple[Dict[str, Any], List[str], List[str] | None, bool, Dict[str, Any]]:
         started = time.perf_counter()
         effective_top_k = max(1, int(top_k))
         effective_expand_num = max(1, int(expand_query_num))
-        plan = build_query_plan(question, query_type)
+        plan = (
+            dict(query_plan)
+            if isinstance(query_plan, Mapping) and is_decomposed_plan(query_plan)
+            else build_query_plan(question, query_type)
+        )
         use_year_scoped = _should_use_year_scoped_retrieval(question, query_type, metadata_filter)
         if is_decomposed_plan(plan) and use_year_scoped:
             return await self._retrieve_year_scoped_decomposed_plan(
@@ -1397,7 +1434,7 @@ class TrustedQAWorkflow:
         intent_duration_ms = _duration_ms(started_at)
         skill_started_at = time.perf_counter()
         slots = dict(understanding.get("slots") or {})
-        _plan, query_type, slots, intent_trace = self._apply_query_plan(question, query_type, slots, intent_trace)
+        _plan, query_type, slots, intent_trace = await self._apply_query_plan(question, query_type, slots, intent_trace)
         selected_skill = self.skill_registry.select_skill(query_type)
         skill_package = selected_skill.package_metadata()
         planner_started_at = time.perf_counter()
@@ -1652,6 +1689,7 @@ class TrustedQAWorkflow:
             expand_query_num=expand_query_num,
             enable_cache=bool(state.get("enable_cache", True)),
             metadata_filter=state.get("metadata_filter") or {},
+            query_plan=(state.get("slots") or {}).get("query_plan"),
         )
         evidence = list(retrieval_result.get("evidence") or [])
         execution_context = update_execution_context(
@@ -1766,6 +1804,7 @@ class TrustedQAWorkflow:
             expand_query_num=expand_query_num,
             enable_cache=False,
             metadata_filter=retry_metadata_filter,
+            query_plan=(state.get("slots") or {}).get("query_plan"),
         )
         evidence = list(retry_result.get("evidence") or state.get("evidence") or [])
         gate = await self.evidence_decision.evaluate(

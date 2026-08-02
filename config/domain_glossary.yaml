@@ -10,30 +10,32 @@ domain_glossary:
             - 三大财务报表
             - 三张财务报表
             - 三张报表
-          query_type: analysis
+          default_query_type: analysis
+          allowed_query_types:
+            - information_extraction
+            - analysis
+            - summarization
           strategy: subtask_independent_retrieval
+          retrieval_tool: parallel_hybrid_retrieval
           reason: The question asks for multiple financial statement objects that should not compete in one retrieval pool.
           slots:
             period: 报告期
             focus: summary
           decomposition:
-            mode: independent_subtasks
-            subtasks:
+            mode: agent_planned
+            required_objects:
               - slot: balance_sheet
                 display_name: 资产负债表
                 match_terms:
                   - 合并资产负债表
                   - 资产负债表
-                question: 分析合并资产负债表 流动资产 流动负债 所有者权益
               - slot: income_statement
                 display_name: 利润表
                 match_terms:
                   - 合并利润表
                   - 利润表
-                question: 分析合并利润表 营业总收入 净利润
               - slot: cash_flow_statement
                 display_name: 现金流量表
                 match_terms:
                   - 合并现金流量表
                   - 现金流量表
-                question: 分析合并现金流量表 经营活动 投资活动 筹资活动

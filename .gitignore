@@ -41,3 +41,5 @@ plan/
 tests/
 .claude/
 interview_prep/
+qa_tests/
+test_data/
