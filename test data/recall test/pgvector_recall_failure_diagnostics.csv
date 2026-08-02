@@ -1,6 +1,0 @@
-﻿query_id,question,report_year,scenario,expected_answer,failure_stage,stage1_candidate_count,stage1_best_gold_rank,reranked_best_gold_rank,diagnostic_top5_gold_rank
-RET-005,芯导科技2024年年报披露的法定代表人是谁？,2024,basic_fact,欧新华,cross_encoder_ranked_below_top5,287,1,12,
-RET-023,芯导科技2024年归属于上市公司股东的净利润是多少元？,2024,financial_metric,"111,639,491.31",cross_encoder_ranked_below_top5,313,1,6,
-RET-105,芯导科技2025年年报披露的法定代表人是谁？,2025,basic_fact,欧新华,cross_encoder_ranked_below_top5,284,2,13,
-RET-119,芯导科技2025年归属于上市公司股东的净利润是多少元？,2025,financial_metric,"106,152,925.57",top_k_dependent_rerank_selection,305,1,4,
-RET-127,芯导科技2025年末总资产是多少元？,2025,financial_metric,"2,329,403,069.01",cross_encoder_ranked_below_top5,326,14,7,

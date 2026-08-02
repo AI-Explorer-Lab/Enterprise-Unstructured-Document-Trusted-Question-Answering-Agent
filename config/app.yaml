@@ -103,6 +103,10 @@ agent:
   max_iterations: 6
   skill_trace_enabled: true
   default_skill: information_extraction
+workflow:
+  runner: agno
+agno:
+  telemetry: false
 planner:
   enabled: true
   max_tasks: 8
@@ -156,7 +160,7 @@ reranker:
   cross_encoder_max_length: 512
   cross_encoder_local_files_only: false
   cross_encoder_device: auto
-  cross_encoder_preload_on_startup: false
+  cross_encoder_preload_on_startup: true
   cross_encoder_load_on_request: true
 cache:
   enabled: true

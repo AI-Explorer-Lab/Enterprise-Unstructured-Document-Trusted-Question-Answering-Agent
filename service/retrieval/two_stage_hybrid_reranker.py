@@ -484,13 +484,27 @@ class TwoStageHybridReranker:
                 "model": self.cross_encoder_model,
                 "requested_device": self.cross_encoder_device,
             }
+        warmup_scores, warmup_trace = scorer.score(
+            "cross encoder warmup",
+            ["cross encoder warmup"],
+        )
+        if not warmup_scores or str(warmup_trace.get("status") or "") != "applied":
+            return {
+                "status": "fallback",
+                "reason": str(warmup_trace.get("reason") or "warmup_inference_failed"),
+                "model": self.cross_encoder_model,
+                "requested_device": self.cross_encoder_device,
+            }
         return {
             "status": "loaded",
             "model": self.cross_encoder_model,
             "requested_device": self.cross_encoder_device,
             "device": getattr(scorer, "_device", "unknown"),
             "cuda_available": bool(getattr(scorer, "_cuda_available", False)),
+            "mps_available": bool(getattr(scorer, "_mps_available", False)),
             "local_files_only": self.cross_encoder_local_files_only,
+            "warmup_inference_status": str(warmup_trace.get("status") or ""),
+            "warmup_score_count": len(warmup_scores),
         }
 
     def _merge_unique(

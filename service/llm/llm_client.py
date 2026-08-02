@@ -284,6 +284,18 @@ def _grounded_answer_scope_contract(scope: Optional[Mapping[str, Any]]) -> str:
         lines.append("- Output format: a structured report with headings and evidence-backed conclusions.")
     elif output_format == "table":
         lines.append("- Output format: use a compact Markdown table where it improves comparison.")
+    else:
+        lines.append(
+            "- Output style: prose-first. Synthesize the evidence into concise Chinese paragraphs; "
+            "do not use Markdown tables unless the user explicitly requested a table."
+        )
+        lines.append(
+            "- For a financial-three-statements question, organize the answer by balance sheet, income statement, "
+            "and cash-flow statement, but explain each section in prose with only the most material figures and changes."
+        )
+        lines.append(
+            "- Treat evidence tables as source data, not as an output template. Never reproduce a full evidence table or list raw evidence snippets."
+        )
     if requirements.get("need_citation"):
         lines.append("- Citation requirement: include a citation id for every material data point and conclusion.")
     if str(requirements.get("length") or "") == "short":
@@ -299,6 +311,15 @@ def _answer_violates_scope_years(answer: str, scope: Optional[Mapping[str, Any]]
         return False
     mentioned = {int(match) for match in re.findall(r"(?:19|20)\d{2}", str(answer or ""))}
     return bool(mentioned - allowed)
+
+
+def _answer_violates_output_style(answer: str, scope: Optional[Mapping[str, Any]]) -> bool:
+    text = str(answer or "").strip()
+    if not text:
+        return False
+    if "<TABLE_START>" in text or "<TABLE_END>" in text:
+        return True
+    return False
 
 
 class LLMService:
@@ -821,7 +842,8 @@ class LLMService:
             "Do not use ellipses or omit cited facts by writing ...; cite the relevant evidence ids explicitly. "
             "The evidence is pre-ordered by requested entity and document section. Preserve that logical order. "
             "Do not put history before profile. Do not include unrelated financial statement sections unless the user asks for them. "
-            "Do not output raw TABLE_START or TABLE_END markers; render useful tables as normal Markdown tables."
+            "Do not output raw TABLE_START or TABLE_END markers. "
+            "Unless the resolved output format explicitly requests a table, convert table evidence into prose rather than Markdown tables."
         )
         user_prompt = (
             f"Question: {question}\n"
@@ -838,19 +860,31 @@ class LLMService:
         if not answer or not answer.strip():
             return None
         cleaned = answer.strip()
-        if _answer_violates_scope_years(cleaned, scope):
-            retry_prompt = (
-                user_prompt
-                + "\nThe previous draft used years outside the resolved scope. Rewrite the answer using only the allowed target years. "
-                "If a requested allowed year is missing from evidence, state that specific missing year instead of using an out-of-scope year."
-            )
+        year_violation = _answer_violates_scope_years(cleaned, scope)
+        style_violation = _answer_violates_output_style(cleaned, scope)
+        if year_violation or style_violation:
+            repair_instructions: List[str] = []
+            if year_violation:
+                repair_instructions.append(
+                    "The previous draft used years outside the resolved scope. Rewrite using only the allowed target years. "
+                    "Do not print any other four-digit year; express supported comparisons as 同比. "
+                    "If an allowed target year is missing, state that specific missing year instead of substituting another year."
+                )
+            if style_violation:
+                repair_instructions.append(
+                    "The previous draft copied raw or Markdown tables. Rewrite it as synthesized Chinese prose with short section headings, "
+                    "material figures embedded in sentences, and citations. Do not output table markers, Markdown table rows, or evidence dumps."
+                )
+            retry_prompt = user_prompt + "\n" + "\n".join(repair_instructions)
             retry_answer = await self.complete(
                 system_prompt,
                 retry_prompt,
                 max_tokens=self._grounded_answer_max_tokens(query_type),
             )
-            if retry_answer and retry_answer.strip() and not _answer_violates_scope_years(retry_answer.strip(), scope):
-                return retry_answer.strip()
+            if retry_answer and retry_answer.strip():
+                repaired = retry_answer.strip()
+                if not _answer_violates_scope_years(repaired, scope) and not _answer_violates_output_style(repaired, scope):
+                    return repaired
             return None
         return cleaned
 

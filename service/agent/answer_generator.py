@@ -333,10 +333,12 @@ class AnswerGenerator:
     def _analysis_answer(self, evidence: List[Dict[str, Any]]) -> str:
         if not evidence:
             return "未检索到可用于分析的年报证据。"
-        lines = ["分析依据（区分原文事实与后续推断）："]
-        for item in evidence:
-            lines.append(f"- {_answer_text(item.get('content', ''))} [{self._citation_label(item)}]")
-        return "\n".join(lines)
+        citation_ids = " ".join(f"[{self._citation_label(item)}]" for item in evidence[:5])
+        return (
+            "已检索到相关年报证据，但当前未能生成可靠的综合文字分析。"
+            "为避免直接复制原始财务表格，本次不展开原始表格内容；请重试生成。"
+            f"可用证据：{citation_ids}"
+        )
 
     def _summary_answer(self, evidence: List[Dict[str, Any]]) -> str:
         if not evidence:

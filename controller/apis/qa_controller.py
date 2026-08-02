@@ -138,14 +138,6 @@ async def _run_qa(request: QARequest, collection_name: str, progress_callback=No
         progress_callback=progress_callback,
     )
 
-@router.post("/qa/ask")
-async def ask(request: QARequest):
-    collection_name = await _validate_qa_request(request)
-    response = await _run_qa(request, collection_name)
-    if request.include_debug:
-        return response
-    return _compact_qa_response(response)
-
 @router.post("/qa/ask/stream")
 async def ask_stream(request: QARequest):
     collection_name = await _validate_qa_request(request)
@@ -249,4 +241,3 @@ async def ask_stream(request: QARequest):
             "X-Accel-Buffering": "no",
         },
     )
-

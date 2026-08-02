@@ -9,7 +9,7 @@ langchain-text-splitters
 langchain>=0.3.20,<0.4.0
 langchain-core>=0.3.40,<0.4.0
 langchain-openai>=0.3.7,<0.4.0
-langgraph>=0.3.10,<0.4.0
+agno==2.8.0
 tiktoken>=0.7.0
 pgvector>=0.3.4
 asyncpg>=0.29.0

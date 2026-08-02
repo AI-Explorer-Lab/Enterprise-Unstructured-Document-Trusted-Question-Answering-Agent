@@ -12,8 +12,15 @@ DEFAULT_DOMAIN_GLOSSARY_PATH = PROJECT_ROOT / "config" / "domain_glossary.yaml"
 
 
 def build_query_plan(question: str, query_type: str = "information_extraction") -> Dict[str, Any]:
+    """Build the deterministic fallback for a domain decomposition.
+
+    Runtime requests use DomainDecompositionPlanner first. This function keeps a
+    bounded fallback for model outages and remains useful to evidence-gate tests.
+    The domain definition fixes required objects; it no longer fixes retrieval
+    questions or focus terms.
+    """
     normalized = normalize_whitespace(question, preserve_newlines=False)
-    match = _match_composite(normalized)
+    match = match_domain_composite(normalized)
     if match is None:
         return {
             "mode": "single",
@@ -22,7 +29,21 @@ def build_query_plan(question: str, query_type: str = "information_extraction") 
             "subtasks": [],
         }
 
-    domain_id, composite, subtasks = match
+    domain_id = str(match.get("domain") or "")
+    composite = dict(match.get("composite") or {})
+    subtasks = [
+        {
+            "slot": str(item.get("slot") or ""),
+            "display_name": str(item.get("display_name") or item.get("slot") or ""),
+            "query_type": str(query_type or match.get("default_query_type") or "information_extraction"),
+            "tool_name": str(match.get("retrieval_tool") or "parallel_hybrid_retrieval"),
+            "question": f"{normalized}；重点检索{str(item.get('display_name') or item.get('slot') or '')}",
+            "match_terms": list(item.get("match_terms") or []),
+            "focus_terms": [],
+        }
+        for item in list(match.get("required_objects") or [])
+        if isinstance(item, Mapping) and str(item.get("slot") or "")
+    ]
     display_names = [str(item.get("display_name") or item.get("slot") or "") for item in subtasks]
     display_names = [item for item in display_names if item]
     composite_name = str(composite.get("display_name") or composite.get("id") or "").strip()
@@ -44,10 +65,15 @@ def build_query_plan(question: str, query_type: str = "information_extraction") 
             composite.get("reason")
             or "The question asks for multiple domain objects that should not compete in one retrieval pool."
         ),
-        "query_type": str(composite.get("query_type") or query_type or "information_extraction"),
+        "query_type": str(query_type or match.get("default_query_type") or "information_extraction"),
         "question": normalized,
         "slots": slots,
         "subtasks": subtasks,
+        "planner_trace": {
+            "source": "deterministic_domain_fallback",
+            "validation": {"valid": True, "errors": [], "missing_objects": []},
+            "repair_attempted": False,
+        },
     }
 
 
@@ -65,28 +91,47 @@ def load_domain_glossary(path: str | Path | None = None) -> Dict[str, Any]:
     return root if isinstance(root, dict) else {}
 
 
-def _match_composite(question: str) -> tuple[str, Dict[str, Any], List[Dict[str, Any]]] | None:
+def match_domain_composite(question: str) -> Dict[str, Any] | None:
     if not question:
         return None
 
     for domain_id, domain_cfg in _iter_domains(load_domain_glossary()):
         for composite in _as_dict_list(domain_cfg.get("composites")):
-            subtasks = _composite_subtasks(composite)
-            if len(subtasks) < 2:
+            objects = _composite_subtasks(composite)
+            if len(objects) < 2:
                 continue
 
             aliases = _terms(composite.get("aliases"), composite.get("display_name"))
             if any(term in question for term in aliases):
-                return domain_id, composite, subtasks
+                selected = objects
+            else:
+                selected = [
+                    item
+                    for item in objects
+                    if any(term in question for term in _subtask_match_terms(item))
+                ]
+                min_matched = max(2, int(composite.get("min_matched_subtasks") or 2))
+                if len(selected) < min_matched:
+                    continue
 
-            selected = [
-                subtask
-                for subtask in subtasks
-                if any(term in question for term in _subtask_match_terms(subtask))
-            ]
-            min_matched = max(2, int(composite.get("min_matched_subtasks") or 2))
-            if len(selected) >= min_matched:
-                return domain_id, composite, selected
+            default_query_type = str(
+                composite.get("default_query_type")
+                or composite.get("query_type")
+                or "analysis"
+            ).strip()
+            allowed_query_types = _terms(composite.get("allowed_query_types"))
+            if default_query_type and default_query_type not in allowed_query_types:
+                allowed_query_types.insert(0, default_query_type)
+            return {
+                "domain": domain_id,
+                "composite": composite,
+                "composite_id": str(composite.get("id") or ""),
+                "display_name": str(composite.get("display_name") or composite.get("id") or ""),
+                "default_query_type": default_query_type,
+                "allowed_query_types": allowed_query_types,
+                "retrieval_tool": str(composite.get("retrieval_tool") or "parallel_hybrid_retrieval"),
+                "required_objects": selected,
+            }
 
     return None
 
@@ -107,7 +152,10 @@ def _iter_domains(glossary: Mapping[str, Any]) -> Iterable[tuple[str, Mapping[st
 
 def _composite_subtasks(composite: Mapping[str, Any]) -> List[Dict[str, Any]]:
     decomposition = composite.get("decomposition")
-    source = decomposition.get("subtasks") if isinstance(decomposition, Mapping) else composite.get("subtasks")
+    if isinstance(decomposition, Mapping):
+        source = decomposition.get("required_objects") or decomposition.get("subtasks")
+    else:
+        source = composite.get("required_objects") or composite.get("subtasks")
     return [_normalize_subtask(item) for item in _as_dict_list(source)]
 
 

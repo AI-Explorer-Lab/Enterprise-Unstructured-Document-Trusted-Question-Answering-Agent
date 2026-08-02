@@ -22,7 +22,13 @@ from constant.retrieval import (
     HYBRID_RETRIEVAL,
     RETRIEVAL_SOURCES,
 )
-from constant.routes import ALL_ROUTES, DOCUMENT_INDEX_ROUTE, HEALTH_ROUTE, QA_ASK_ROUTE, QA_SESSION_ROUTE
+from constant.routes import (
+    ALL_ROUTES,
+    DOCUMENT_INDEX_ROUTE,
+    HEALTH_ROUTE,
+    QA_ASK_STREAM_ROUTE,
+    QA_SESSION_ROUTE,
+)
 
 __all__ = [
     "ALL_ROUTES",
@@ -42,7 +48,7 @@ __all__ = [
     "INDEXING_IN_PROGRESS",
     "LOW_EVIDENCE",
     "NOT_FOUND",
-    "QA_ASK_ROUTE",
+    "QA_ASK_STREAM_ROUTE",
     "QA_SESSION_ROUTE",
     "QueryType",
     "RETRIEVAL_ERROR",

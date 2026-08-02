@@ -130,6 +130,31 @@ def _compact_response(data: dict[str, Any]) -> dict[str, Any]:
     }
 
 
+def _parse_sse(text: str) -> tuple[dict[str, Any], list[dict[str, Any]]]:
+    final: dict[str, Any] = {}
+    statuses: list[dict[str, Any]] = []
+    for block in text.split("\n\n"):
+        event_name = ""
+        data_text = ""
+        for line in block.splitlines():
+            if line.startswith("event:"):
+                event_name = line.split(":", 1)[1].strip()
+            elif line.startswith("data:"):
+                data_text = line.split(":", 1)[1].strip()
+        if not data_text:
+            continue
+        payload = json.loads(data_text)
+        if event_name == "status" and isinstance(payload, dict):
+            statuses.append(payload)
+        elif event_name == "final" and isinstance(payload, dict):
+            final = payload
+        elif event_name == "error":
+            raise RuntimeError(str((payload or {}).get("message") or "stream error"))
+    if not final:
+        raise RuntimeError("stream completed without a final event")
+    return final, statuses
+
+
 async def run_once(args: argparse.Namespace) -> dict[str, Any]:
     import httpx
     from main import app
@@ -151,20 +176,24 @@ async def run_once(args: argparse.Namespace) -> dict[str, Any]:
     transport = httpx.ASGITransport(app=app)
     started = time.perf_counter()
     async with httpx.AsyncClient(transport=transport, base_url="http://trusted-qa.local", timeout=args.timeout) as client:
-        response = await client.post("/qa/ask", json=payload, timeout=args.timeout)
+        response = await client.post("/qa/ask/stream", json=payload, timeout=args.timeout)
     total_ms = _duration_ms(started)
-    data = response.json()
+    data, statuses = _parse_sse(response.text)
     return {
         "request": payload,
         "status_code": response.status_code,
         "total_ms": total_ms,
+        "first_status_ms": (
+            int(statuses[0].get("elapsed_ms") or 0) if statuses else None
+        ),
+        "status_events": statuses,
         "response": _compact_response(data if isinstance(data, dict) else {}),
         "profile": summarize_events(),
     }
 
 
 def parse_args() -> argparse.Namespace:
-    parser = argparse.ArgumentParser(description="Profile the /qa/ask API path in-process through FastAPI ASGI.")
+    parser = argparse.ArgumentParser(description="Profile the /qa/ask/stream SSE path in-process through FastAPI ASGI.")
     parser.add_argument("--collection", default="default")
     parser.add_argument("--question", default="What is the company's 2025 operating revenue?")
     parser.add_argument("--top-k", type=int, default=5)
@@ -192,7 +221,6 @@ async def main() -> None:
 
 if __name__ == "__main__":
     asyncio.run(main())
-
 
 
 

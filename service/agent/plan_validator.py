@@ -72,6 +72,22 @@ def _cycle_nodes(tasks: Iterable[PlanTask]) -> List[str]:
     return cycles
 
 
+def _dependency_ancestors(
+    task_id: str,
+    tasks_by_id: Mapping[str, PlanTask],
+) -> set[str]:
+    ancestors: set[str] = set()
+    pending = list(tasks_by_id.get(task_id).depends_on) if task_id in tasks_by_id else []
+    while pending:
+        dependency = pending.pop()
+        if dependency in ancestors:
+            continue
+        ancestors.add(dependency)
+        if dependency in tasks_by_id:
+            pending.extend(tasks_by_id[dependency].depends_on)
+    return ancestors
+
+
 class PlanValidator:
     def __init__(
         self,
@@ -193,6 +209,38 @@ class PlanValidator:
                 errors.append("executable plan must contain the evidence_gate tool")
             if "answer_generator" not in tool_names:
                 errors.append("executable plan must contain the answer_generator tool")
+            required_chain = (
+                "parallel_hybrid_retrieval",
+                "two_stage_hybrid_rerank",
+                "evidence_gate",
+                "answer_generator",
+            )
+            tasks_by_tool = {
+                tool_name: [
+                    task for task in tasks if task.tool_name == tool_name
+                ]
+                for tool_name in required_chain
+            }
+            for tool_name, matches in tasks_by_tool.items():
+                if len(matches) != 1:
+                    errors.append(
+                        f"executable plan must contain exactly one {tool_name} task"
+                    )
+            if all(len(tasks_by_tool[name]) == 1 for name in required_chain):
+                tasks_by_id = {task.task_id: task for task in tasks}
+                for predecessor, successor in zip(
+                    required_chain,
+                    required_chain[1:],
+                ):
+                    predecessor_id = tasks_by_tool[predecessor][0].task_id
+                    successor_id = tasks_by_tool[successor][0].task_id
+                    if predecessor_id not in _dependency_ancestors(
+                        successor_id,
+                        tasks_by_id,
+                    ):
+                        errors.append(
+                            f"{successor} must depend on {predecessor}"
+                        )
 
         valid = not errors
         return PlanValidationResult(
