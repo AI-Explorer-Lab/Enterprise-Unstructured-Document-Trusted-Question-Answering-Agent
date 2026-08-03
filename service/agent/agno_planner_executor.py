@@ -206,6 +206,7 @@ class AgnoPlannerExecutor:
             "status": "ready" if ordered else "not_executable",
             "task_count": len(ordered),
             "tasks": ordered,
+            "stages": list(result.get("execution_stages") or []),
         }
         return result
 
