@@ -17,6 +17,59 @@ def _clean_list(value: Any) -> List[str]:
     return result
 
 
+def _clean_deliverables(value: Any) -> List[Dict[str, str]]:
+    if not isinstance(value, list):
+        return []
+    result: List[Dict[str, str]] = []
+    for item in value:
+        if not isinstance(item, Mapping):
+            continue
+        intent_id = str(item.get("intent_id") or "").strip()
+        requested_output = str(item.get("requested_output") or "").strip()
+        if intent_id and requested_output:
+            result.append(
+                {
+                    "intent_id": intent_id,
+                    "requested_output": requested_output,
+                }
+            )
+    return result
+
+
+_INTENT_SKILL_NAMES = {
+    "information_extraction": "InformationExtractionSkill",
+    "metric_calculation": "MetricCalculationSkill",
+    "comparison": "ComparisonSkill",
+    "analysis": "AnalysisSkill",
+    "summarization": "SummarizationSkill",
+}
+
+
+def _execution_stages(
+    routed_sub_intents: List[str],
+    routed_deliverables: List[Dict[str, str]],
+) -> List[Dict[str, Any]]:
+    deliverable_by_intent = {
+        str(item.get("intent_id") or "").strip(): str(
+            item.get("requested_output") or ""
+        ).strip()
+        for item in routed_deliverables
+        if isinstance(item, Mapping)
+    }
+    stages: List[Dict[str, Any]] = []
+    for index, intent_id in enumerate(routed_sub_intents, start=1):
+        stages.append(
+            {
+                "stage_id": f"stage_{index}",
+                "intent_id": intent_id,
+                "skill_name": _INTENT_SKILL_NAMES.get(intent_id, ""),
+                "requested_output": deliverable_by_intent.get(intent_id, ""),
+                "depends_on": [f"stage_{index - 1}"] if index > 1 else [],
+            }
+        )
+    return stages
+
+
 def _initial_input_slots(intent_id: str, slots: Mapping[str, Any]) -> Dict[str, Any]:
     companies = _clean_list(slots.get("companies"))
     periods = _clean_list(slots.get("years") or slots.get("periods") or slots.get("period"))
@@ -345,6 +398,11 @@ class LLMPlanner:
             self.tool_registry,
         )
         routed_sub_intents = _clean_list(extracted_slots.get("intent_sub_intents"))
+        routed_deliverables = _clean_deliverables(
+            extracted_slots.get("intent_deliverables")
+            or extracted_slots.get("intent_requested_outputs")
+        )
+        execution_stages = _execution_stages(routed_sub_intents, routed_deliverables)
         payload = await self._call_planner(
             question,
             intent_id,
@@ -352,6 +410,8 @@ class LLMPlanner:
             seed,
             conversation_context or {},
             routed_sub_intents,
+            routed_deliverables,
+            execution_stages,
         )
         source = "llm"
         if payload is None:
@@ -394,6 +454,8 @@ class LLMPlanner:
             "source": source,
             "repair_attempted": repair_attempted,
             "routed_sub_intents": routed_sub_intents,
+            "routed_deliverables": routed_deliverables,
+            "execution_stages": execution_stages,
         }
 
     async def _call_planner(
@@ -404,6 +466,8 @@ class LLMPlanner:
         seed: Mapping[str, Any],
         conversation_context: Mapping[str, Any],
         routed_sub_intents: List[str],
+        routed_deliverables: List[Dict[str, str]],
+        execution_stages: List[Dict[str, Any]],
     ) -> Dict[str, Any] | None:
         structured_json = getattr(self.llm_service, "structured_json", None)
         if not callable(structured_json):
@@ -413,15 +477,23 @@ class LLMPlanner:
                 "Create one bounded execution plan. Extract only user-provided input slots. "
                 "Never populate document ids, chunks, pages, tables, evidence, scores, citations, or tool outputs. "
                 "Use only the supplied tools and return only the structured schema. "
-                "When routed_sub_intents contains multiple operations, cover every operation in that execution order "
-                "while keeping the routed terminal intent fixed.",
+                "Treat every execution stage as a user-visible operation, including stages that depend on a prior "
+                "stage. Cover every stage in exactly the supplied order. Retrieval and operand lookup are internal "
+                "prerequisites, not stages. Keep user-provided slots fixed and do not invent evidence.",
                 {
                     "question": question,
                     "intent": intent_id,
                     "routed_sub_intents": routed_sub_intents,
+                    "routed_deliverables": routed_deliverables,
+                    "execution_stages": execution_stages,
                     "seed_input": dict(seed),
                     "conversation_context": dict(conversation_context),
                     "available_tools": self.tool_registry.describe_tools(intent_id),
+                    "stage_tool_whitelists": {
+                        stage["intent_id"]: self.tool_registry.describe_tools(stage["intent_id"])
+                        for stage in execution_stages
+                        if stage.get("intent_id")
+                    },
                 },
                 schema=schema,
                 max_tokens=1200,
@@ -477,4 +549,5 @@ class LLMPlanner:
             },
             "source": "failed",
             "repair_attempted": False,
+            "execution_stages": [],
         }

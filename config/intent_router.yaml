@@ -1,6 +1,8 @@
 intent_router:
   enabled: true
-  strategy: llm_zero_shot
-  max_tokens: 320
+  strategy: llm_zero_shot_decomposition
+  max_tokens: 512
   few_shot_enabled: false
+  routing_derivation: programmatic_from_requested_outputs
+  semantic_repair_enabled: true
   fallback_strategy: deterministic_hard_signal_then_clarify

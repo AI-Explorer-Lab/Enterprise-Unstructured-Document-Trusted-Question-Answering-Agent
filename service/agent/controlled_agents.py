@@ -225,6 +225,25 @@ def _clean_list(value: Any) -> List[str]:
     return cleaned
 
 
+def _clean_intent_deliverables(value: Any) -> List[Dict[str, str]]:
+    if not isinstance(value, Sequence) or isinstance(value, (str, bytes, bytearray)):
+        return []
+    cleaned: List[Dict[str, str]] = []
+    for item in value:
+        if not isinstance(item, Mapping):
+            continue
+        intent_id = _clean_str(item.get("intent_id"))
+        requested_output = _clean_str(item.get("requested_output"))
+        if intent_id and requested_output:
+            cleaned.append(
+                {
+                    "intent_id": intent_id,
+                    "requested_output": requested_output,
+                }
+            )
+    return cleaned
+
+
 def _normalize_slots(slots: Mapping[str, Any] | None) -> Dict[str, Any]:
     payload = dict(slots or {})
     normalized = {
@@ -379,8 +398,12 @@ class QuestionUnderstandingAgent:
                 "valid": False,
                 "decision": "error",
                 "route_status": "error",
+                "scope_status": "",
                 "intent_id": "",
                 "sub_intents": [],
+                "deliverables": [],
+                "requested_outputs": [],
+                "internal_requirements": [],
                 "execution_intent": "",
                 "top_intent": "",
                 "provider": "llm",
@@ -409,9 +432,9 @@ class QuestionUnderstandingAgent:
                 skill_registry=skill_registry,
                 source="llm_intent_gate",
                 reason=(
-                    "Zero-shot LLM routed the compound request to the planner."
+                    "LLM decomposed user-visible outputs; the program derived the compound planner route."
                     if decision == "planner"
-                    else "Zero-shot LLM selected one supported primary intent."
+                    else "LLM decomposed one user-visible output; the program derived the select route."
                 ),
             )
 
@@ -428,9 +451,9 @@ class QuestionUnderstandingAgent:
                 skill_registry=skill_registry,
                 source="llm_intent_gate",
                 reason=(
-                    "Zero-shot LLM rejected an out-of-scope request."
+                    "LLM marked the request out of scope."
                     if decision == "reject"
-                    else "Zero-shot LLM requested clarification before routing."
+                    else "LLM marked the operation unclear and requested clarification."
                 ),
             )
 
@@ -442,8 +465,22 @@ class QuestionUnderstandingAgent:
                 **intent_route,
                 "decision": "select",
                 "route_status": "accepted",
+                "scope_status": "supported",
                 "execution_intent": fallback_query_type,
                 "top_intent": fallback_query_type,
+                "requested_outputs": [
+                    {
+                        "intent_id": fallback_query_type,
+                        "requested_output": "deterministic hard-signal route",
+                    }
+                ],
+                "internal_requirements": [],
+                "deliverables": [
+                    {
+                        "intent_id": fallback_query_type,
+                        "requested_output": "deterministic hard-signal route",
+                    }
+                ],
                 "fallback": "deterministic_hard_signal",
             }
             fallback_frame = dict(frame)
@@ -463,6 +500,10 @@ class QuestionUnderstandingAgent:
             **intent_route,
             "decision": "clarify",
             "route_status": "unknown",
+            "scope_status": "unclear",
+            "requested_outputs": [],
+            "internal_requirements": [],
+            "deliverables": [],
             "fallback": "clarify",
         }
         fallback_frame = dict(frame)
@@ -534,6 +575,15 @@ class QuestionUnderstandingAgent:
         slots["routing_state"] = _clean_str(frame.get("routing_state")) or "ready"
         slots["intent_decision"] = _clean_str(intent_route.get("decision"))
         slots["intent_sub_intents"] = _clean_list(intent_route.get("sub_intents"))
+        slots["intent_requested_outputs"] = _clean_intent_deliverables(
+            intent_route.get("requested_outputs")
+        )
+        slots["intent_internal_requirements"] = _clean_list(
+            intent_route.get("internal_requirements")
+        )
+        slots["intent_deliverables"] = _clean_intent_deliverables(
+            intent_route.get("deliverables")
+        )
         slots["intent_execution_intent"] = _clean_str(intent_route.get("execution_intent"))
         slots["__slot_fill_source__"] = source
         slots["__skill_name__"] = selected_skill.skill_name
@@ -563,6 +613,15 @@ class QuestionUnderstandingAgent:
                 "field_evidence": list(frame.get("field_evidence") or []),
                 "intent_decision": _clean_str(intent_route.get("decision")),
                 "sub_intents": _clean_list(intent_route.get("sub_intents")),
+                "requested_outputs": _clean_intent_deliverables(
+                    intent_route.get("requested_outputs")
+                ),
+                "internal_requirements": _clean_list(
+                    intent_route.get("internal_requirements")
+                ),
+                "deliverables": _clean_intent_deliverables(
+                    intent_route.get("deliverables")
+                ),
                 "intent_router": dict(intent_route),
                 "need_citation": need_citation,
                 "citation_mode": citation_mode,
